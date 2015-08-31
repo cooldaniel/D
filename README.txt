@@ -1,8 +1,8 @@
 /**
  * README FILE FOR DUMPER CLASS
  * 
- * @author ShengXin Luo <pdo2010@163.com>
- * @copyright Copyright &copy; 2010-2012
+ * @author Daniel Luo <295313207@qq.com>
+ * @copyright Copyright &copy; 2010-2015
  * @version 2.0
  */
 

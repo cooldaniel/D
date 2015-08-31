@@ -1,4 +1,12 @@
 <?php
+/**
+ * D class file.
+ * 
+ * @author Daniel Luo <295313207@qq.com>
+ * @copyright Copyright &copy; 2010-2015
+ * @version 2.0
+ */
+
 function autoloadDumperComponentD()
 {
 	$basepath = dirname(__FILE__);
