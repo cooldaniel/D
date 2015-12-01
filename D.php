@@ -163,7 +163,7 @@ class D
 	 */
 	public static function pde()
 	{
-		exit(self::pdInternal(func_get_args()));
+		self::pdInternal(func_get_args(), true);
 	}
 	
 	/**
@@ -171,7 +171,7 @@ class D
 	 */
 	public static function pdse()
 	{
-		exit(self::pds(func_get_args()));
+		self::pdsInternal(func_get_args(), true);
 	}
 	
 	/**
@@ -179,7 +179,7 @@ class D
 	 */
 	public static function loge()
 	{
-		exit(self::logInternal(func_get_args()));
+		self::logInternal(func_get_args(), true);
 	}
 	
 	/**
@@ -188,7 +188,7 @@ class D
 	public static function logce()
 	{
 		self::$_clear = true;
-		exit(self::logInternal(func_get_args()));
+		self::logInternal(func_get_args(), true);
 	}
 	
 	/**
@@ -208,9 +208,10 @@ class D
 	/**
 	 * 内部调用方法，打印参数并高亮显示输出.
 	 * @param array $args 要打印的参数列表数组.
+	 * @param boolean $terminate 打印后是否终止程序执行，true表示是，false表示否，默认是false.
 	 * @return void 该方法不返回数据，打印后高亮显示输出结果.
 	 */
-	private static function pdInternal($args)
+	private static function pdInternal($args, $terminate=false)
 	{
 		if (!self::$_closed)
 		{
@@ -261,15 +262,21 @@ class D
 				self::$_arg_pos++;
 			}
 			self::$_arg_pos = 0;
+			
+			if ($terminate)
+			{
+				exit;
+			}
 		}
 	}
 	
 	/**
 	 * 内部调用方法，直接打印参数并输出.
 	 * @param array $args 要打印的参数列表数组.
+	 * @param boolean $terminate 打印后是否终止程序执行，true表示是，false表示否，默认是false.
 	 * @return void 该方法不返回数据，打印后直接输出结果.
 	 */
-	private static function pdsInternal($args)
+	private static function pdsInternal($args, $terminate=false)
 	{
 		if (!self::$_closed)
 		{
@@ -286,16 +293,22 @@ class D
 				self::$_arg_pos++;
 			}
 			self::$_arg_pos = 0;
+			
+			if ($terminate)
+			{
+				exit;
+			}
 		}
 	}
 	
 	/**
 	 * 内部调用方法，打印参数并将结果记录到文件中.
 	 * @param array $args 要打印的参数列表数组.
+	 * @param boolean $terminate 打印后是否终止程序执行，true表示是，false表示否，默认是false.
 	 * @return void 该方法不返回数据，默认会把打印的数据记录到站点根目录下名为DumperLogFile.txt
 	 * 的文件中.如果指定了{@link $logPath}则会记录到该目录下这个文件中.
 	 */
-	private static function logInternal($args)
+	private static function logInternal($args, $terminate=false)
 	{
 		if (!self::$_closed)
 		{
@@ -336,6 +349,11 @@ class D
 					self::$_arg_pos++;
 				}
 				self::$_arg_pos = 0;
+			}
+			
+			if ($terminate)
+			{
+				exit;
 			}
 		}
 	}
@@ -605,7 +623,7 @@ class D
 	}
 	public static function counte($items)
 	{
-		exit(self::count($items));
+		self::pde(count($items));
 	}
 	
 	public static function rand()
@@ -615,7 +633,7 @@ class D
 	
 	public static function rande()
 	{
-		exit(self::rand());
+		self::pde(rand());
 	}
 	
 	public static function args($log=false)
