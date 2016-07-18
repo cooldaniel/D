@@ -444,7 +444,8 @@ class D
 			'server'=>'$_SERVER',
 			'servere'=>'$_SERVER',
 			'globals'=>'$GLOBALS',
-			'globalse'=>'$GLOBALS'
+			'globalse'=>'$GLOBALS',
+			'usage'=>'usage',
 		);
 		
 		return isset($map[$funcName]) ? $map[$funcName] : '';
@@ -693,6 +694,20 @@ class D
 	
 	public static function globals(){self::pd($GLOBALS);}
 	public static function globalse(){self::pde($GLOBALS);}
+
+	public static function usage($log=false)
+	{
+		$u = memory_get_usage();
+		$pu = memory_get_peak_usage();
+		$k = 1024;
+		$m = 1024 * 1024;
+		$usage = array(
+			'memory_get_usage'=>array('B'=>$u, 'K'=>$u/$k, 'M'=>$u/$m),
+			'memory_get_peak_usage'=>array('B'=>$pu, 'K'=>$pu/$k, 'M'=>$pu/$m),
+			'memory_limit'=>ini_get('memory_limit'),
+		);
+		$log ? D::log($usage) : D::pd($usage);
+	}
 	
 	/**
 	 * 转换秒数成年月日数据.
