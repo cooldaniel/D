@@ -522,17 +522,17 @@ class D
         $key = md5($fileinfo['file']);
         if (isset(self::$_positions[$key]))
         {
-            return self::$_positions[$key];
+            $position = self::$_positions[$key];
         }
         else
         {
             $pathinfo = pathinfo($fileinfo['file']);
             $lastdir = substr($pathinfo['dirname'], strrpos($pathinfo['dirname'], DIRECTORY_SEPARATOR));
-            $position = $lastdir . DIRECTORY_SEPARATOR . $pathinfo['basename'] . '(' . $fileinfo['line'] . ')';
+            $position = $lastdir . DIRECTORY_SEPARATOR . $pathinfo['basename'] . '({line})';
             $position = str_replace(DIRECTORY_SEPARATOR, '/', $position);
             self::$_positions[$key] = $position;
-            return $position;
         }
+        return str_replace('{line}', $fileinfo['line'], $position);
     }
 	
 	/**
