@@ -78,6 +78,7 @@ class D
 	 */
 	const UTF8 = 1;
 	const GBK = 2;
+    const LINE = '------------------------------------------------------------------';
 	
 	/**
 	 * @var string 使用带文件记录的打印方式时，可以设置这个目录用来保存记录文件.
@@ -93,6 +94,7 @@ class D
 	private static $_clear = false;
 	private static $_asa = false;
 	private static $_js_included = false;
+    private static $_positions = array();
 	
 	/**
 	 * 关闭D组件.
@@ -124,6 +126,19 @@ class D
 			throw new Exception('You must use D::UTF8 or D::GBK as the charset.');
 		}
 	}
+
+    /**
+     * 在当前页面输出字符集设置header.
+     */
+    public static function header($charset=null)
+    {
+        if (!$charset || !in_array($charset, array(self::UTF8, self::GBK)))
+        {
+            $charset = self::GBK;
+        }
+        $text = ($charset == self::UTF8) ? 'UTF-8' : 'GB2312';
+        header('Content-Type:text/html; charset=' . $text);
+    }
 	
 	/**
 	 * 高亮打印参数.
@@ -478,10 +493,11 @@ class D
 					break;
 				}
 			}
-			
-			if ($v !== array())
+
+            if ($v !== array())
 			{
-				$message = self::namesMap($v['function']);
+				$position = self::fetchPosition($v);
+                $message = self::namesMap($v['function']);
 				if ($message == '')
 				{
 					$message = self::fetchArgName($v['file'], $v['line']);
@@ -493,12 +509,31 @@ class D
 			}
 			else
 			{
+                $position = '';
 				$message = "Can't get the arg message.";
 			}
 		}
 		
-		return $highlight ? '<span class="toggle">#' . $message . '</span> '. $content : '#' . $message . ' ' . $content;
+		return $highlight ? '<span class="toggle">' . $position . '#' . $message . '</span> '. $content : $position . '#' . $message . ' ' . $content;
 	}
+
+	private static function fetchPosition(&$fileinfo)
+    {
+        $key = md5($fileinfo['file']);
+        if (isset(self::$_positions[$key]))
+        {
+            return self::$_positions[$key];
+        }
+        else
+        {
+            $pathinfo = pathinfo($fileinfo['file']);
+            $lastdir = substr($pathinfo['dirname'], strrpos($pathinfo['dirname'], DIRECTORY_SEPARATOR));
+            $position = $lastdir . DIRECTORY_SEPARATOR . $pathinfo['basename'] . '(' . $fileinfo['line'] . ')';
+            $position = str_replace(DIRECTORY_SEPARATOR, '/', $position);
+            self::$_positions[$key] = $position;
+            return $position;
+        }
+    }
 	
 	/**
 	 * 内部调用方法，根据调用堆栈文件和行号获取调用参数名.
@@ -608,6 +643,21 @@ class D
 	{
 		self::pd(realpath($file));
 	}
+
+    /**
+     * 显示大块文本.
+     */
+	public static function e($content)
+    {
+        echo '<pre>' . $content . '</pre>';
+    }
+
+    public static function eg($content)
+    {
+        self::charset(self::UTF8);
+        $content = self::iconv($content);
+        self::e($content);
+    }
 	
 	public static function date($timestamp=null)
 	{
@@ -694,6 +744,19 @@ class D
 	
 	public static function globals(){self::pd($GLOBALS);}
 	public static function globalse(){self::pde($GLOBALS);}
+
+    public static function iget($name, $return=false)
+    {
+        if ($return)
+        {
+            return ini_get($name);
+        }
+        else
+        {
+            self::pd(ini_get($name));
+        }
+    }
+    public static function igete($name){self::pde(ini_get($name));}
 
 	public static function usage($log=false)
 	{
