@@ -79,13 +79,8 @@ class D
 	const UTF8 = 1;
 	const GBK = 2;
     const LINE = '------------------------------------------------------------------';
-	
-	/**
-	 * @var string 使用带文件记录的打印方式时，可以设置这个目录用来保存记录文件.
-	 * 如果没有指定，就默认使用站点根目录.要求该目录可读写.
-	 */
-	public static $logPath = '';
-	
+
+	private static $_logPath;
 	private static $_iconv = null;
 	private static $_message = '';
 	private static $_arg_pos = 0;
@@ -95,7 +90,13 @@ class D
 	private static $_asa = false;
 	private static $_js_included = false;
     private static $_positions = array();
-	
+    private static $_pds_exception=false;
+
+    public static function pdsException()
+    {
+        self::$_pds_exception = true;
+    }
+
 	/**
 	 * 关闭D组件.
 	 */
@@ -236,10 +237,10 @@ class D
 			foreach ($args as $arg)
 			{
 				$content = self::pdo($arg);
-					
+
 				// highlight
 				$content = highlight_string("\n<?php\n$content", true);
-				
+
 				// 过滤掉最外层 PHP 开始和结束标签
 				$content = substr_replace($content, '', strpos($content, '<br />'), strlen('<br />'));
 				$content = substr_replace($content, '', strpos($content, '&lt;?php<br />'), strlen('&lt;?php<br />'));
@@ -304,7 +305,7 @@ class D
 				$content = self::prefixMessage($content);
 				$content = self::iconv($content);
 				echo $content;
-			
+
 				self::$_arg_pos++;
 			}
 			self::$_arg_pos = 0;
@@ -341,16 +342,7 @@ class D
 					$content = self::iconv($content);
 					
 					// save to file
-					if (is_dir(self::$logPath) && is_readable(self::$logPath) && is_writeable(self::$logPath))
-					{
-						$logPath = rtrim(str_replace('\\', '/', self::$logPath), '/');
-					}
-					else
-					{
-						$logPath = $_SERVER['DOCUMENT_ROOT'];
-					}
-					$file = $logPath . '/DumperLogFile.txt';
-					
+					$file = self::getLogPath() . '/DumperLogFile.txt';
 					if (self::$_clear)
 					{
 						file_put_contents($file, $content);
@@ -372,6 +364,40 @@ class D
 			}
 		}
 	}
+
+	/**
+     * 获取记录文件所在目录.
+	 * @return string 使用带文件记录的打印方式时，可以设置这个目录用来保存记录文件.
+	 * 如果没有指定，web调用默认使用站点根目录，命令行调用默认使用第一次调用脚本所在目录.
+     * 要求该目录可读写.
+     * @link {setLogPath}
+	 */
+	public static function getLogPath()
+    {
+        if (self::$_logPath === null)
+        {
+            $path = ($_SERVER['DOCUMENT_ROOT'] != '') ? $_SERVER['DOCUMENT_ROOT'] : '.';
+            self::setLogPath($path);
+        }
+        return self::$_logPath;
+    }
+
+    /**
+     * 设置记录文件所在目录.
+     * @param $path
+     */
+    public static function setLogPath($path)
+    {
+        $path = realpath($path);
+        if (is_dir($path) && is_readable($path) && is_writeable($path))
+        {
+            self::$_logPath = rtrim(str_replace('\\', '/', $path), '/');
+        }
+        else
+        {
+            throw new Exception('Please make sure that the log path is an existent, readable and writerable directory.');
+        }
+    }
 	
 	/**
 	 * 内部调用方法，打印参数.
@@ -401,24 +427,27 @@ class D
 			ob_start();
 			var_dump($arg);
 			$content = ob_get_clean();
-			
-			// 去除箭头两端以及数组大括号前端的空格,去除空数组大括号之间的空白
-			$content = preg_replace('/=>\s*/', ' => ', $content);
-			$content = preg_replace('/(array\(\d+\))\s{/', '\1{', $content);
-			$content = preg_replace('/(array\(\d+\){)\s*}/', '\1}', $content);
-			
-			// 将数组项数字和字符串长度数字设置最低长度为3位，不足则前补0
-			$content = preg_replace_callback('/string\((\d+)\)/', array('D', 'zeroPadding'), $content);
-			//$content = preg_replace('/string\((\d+)\)/', '', $content);
-			$content = preg_replace_callback('/\[(\d+)\]/', array('D', 'zeroPadding'), $content);
-			
-			// 去除数组元素索引的双引号
-			//$content=preg_replace('/\[\"/','[',$content);
-			//$content=preg_replace('/\"\]/',']',$content);
-			
+            self::formatDumpContent($content);
 			return $content;
 		}
 	}
+
+	private static function formatDumpContent(&$content)
+    {
+        // 去除箭头两端以及数组大括号前端的空格,去除空数组大括号之间的空白
+        $content = preg_replace('/=>\s*/', ' => ', $content);
+        $content = preg_replace('/(array\(\d+\))\s{/', '\1{', $content);
+        $content = preg_replace('/(array\(\d+\){)\s*}/', '\1}', $content);
+
+        // 将数组项数字和字符串长度数字设置最低长度为3位，不足则前补0
+        $content = preg_replace_callback('/string\((\d+)\)/', array('D', 'zeroPadding'), $content);
+        //$content = preg_replace('/string\((\d+)\)/', '', $content);
+        $content = preg_replace_callback('/\[(\d+)\]/', array('D', 'zeroPadding'), $content);
+
+        // 去除数组元素索引的双引号
+        //$content=preg_replace('/\[\"/','[',$content);
+        //$content=preg_replace('/\"\]/',']',$content);
+    }
 	
 	/**
 	 * 内部调用方法，在打印结果的数组序号部分填充0保持对齐.
@@ -474,45 +503,55 @@ class D
 	 */
 	private static function prefixMessage($content, $highlight=false)
 	{
-		if (self::$_message != '')
-		{
-			// 指定名称
-			$message = self::$_message;
-		}
-		else
-		{
-			$d = debug_backtrace();
-			
-			// 调用位置
-			$v = array();
-			foreach($d as $row)
-			{
-				if(isset($row['file']) && (strpos($row['file'], 'D.php') === false))
-				{
-					$v = $row;
-					break;
-				}
-			}
+        $d = debug_backtrace();
 
+        // 调用位置
+        $v = array();
+        foreach($d as $row)
+        {
+            if(isset($row['file']) && (strpos($row['file'], 'D.php') === false))
+            {
+                $v = $row;
+                break;
+            }
+        }
+
+        if ($v !== array())
+        {
+            $position = self::fetchPosition($v);
+        }
+        else
+        {
+            $position = '';
+
+        }
+
+        //var_dump($d);
+
+        if (self::$_message != '')
+        {
+            // 指定名称
+            $message = self::$_message;
+        }
+        else
+        {
             if ($v !== array())
-			{
-				$position = self::fetchPosition($v);
+            {
                 $message = self::namesMap($v['function']);
-				if ($message == '')
-				{
-					$message = self::fetchArgName($v['file'], $v['line']);
-					if ($v['function'] == 'count')
-					{
-						$message = 'count(' . $message . ')';
-					}
-				}
-			}
-			else
-			{
-                $position = '';
-				$message = "Can't get the arg message.";
-			}
-		}
+                if ($message == '')
+                {
+                    $message = self::fetchArgName($v['file'], $v['line']);
+                    if ($v['function'] == 'count')
+                    {
+                        $message = 'count(' . $message . ')';
+                    }
+                }
+            }
+            else
+            {
+                $message = "Can't get the arg message.";
+            }
+        }
 		
 		return $highlight ? '<span class="toggle">' . $position . '#' . $message . '</span> '. $content : $position . '#' . $message . ' ' . $content;
 	}
@@ -641,7 +680,11 @@ class D
 	
 	public static function rp($file)
 	{
-		self::pd(realpath($file));
+		self::pd(array(
+		    'file'=>$file,
+		    'realpath'=>realpath($file),
+            'file_exists'=>file_exists($file)
+        ));
 	}
 
     /**
@@ -820,7 +863,7 @@ class D
 	}
 	
 	// @todo 2012/11/5 等待重新开发
-	public static function trace($html=false)
+	public static function trace($terminate=true, $html=true)
 	{
 		$d=debug_backtrace();
 		$all = true;
@@ -864,6 +907,7 @@ class D
 		}
 		$trace.="#{main} REQUEST_URI=".$_SERVER['REQUEST_URI']."\n\n";
 		echo  $html ? nl2br($trace) : $trace;
+        $terminate && exit;
 	}
 	
 	
@@ -875,8 +919,9 @@ class D
 		
 		if ($error & error_reporting())
 		{
+            $method = self::$_pds_exception ? 'pds' : 'pd';
 			self::$_message = 'Error';
-			self::pd(array(
+			self::pds(array(
 				'error' => $error,
 				'message' => $message,
 				'file' => $file,
@@ -895,9 +940,10 @@ class D
 	{
 		//restore_error_handler();
 		restore_exception_handler();
-		
+
+        $method = self::$_pds_exception ? 'pds' : 'pd';
 		self::$_message = 'Exception';
-		self::pd(array(
+		self::pds(array(
 			'exception' => $e->getCode(),
 			'message' => $e->getMessage(),
 			'file' => $e->getFile(),
