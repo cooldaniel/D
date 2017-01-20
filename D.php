@@ -112,6 +112,14 @@ class D
 	{
 		self::$_asa = true;
 	}
+
+    /**
+     * 切换字符集到GBK.
+     */
+	public static function sc()
+    {
+        self::$_iconv = self::GBK;
+    }
 	
 	/**
 	 * 设置字符集.
