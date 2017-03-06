@@ -350,7 +350,7 @@ class D
 					$content = self::iconv($content);
 					
 					// save to file
-					$file = self::getLogPath() . '/DumperLogFile.txt';
+					$file = self::getLogPath() . '/DumperLogFile.ig.txt';
 					if (self::$_clear)
 					{
 						file_put_contents($file, $content);
