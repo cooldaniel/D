@@ -691,7 +691,8 @@ class D
 		self::pd(array(
 		    'file'=>$file,
 		    'realpath'=>realpath($file),
-            'file_exists'=>file_exists($file)
+            'file_exists'=>file_exists($file),
+            'pathinfo'=>pathinfo($file),
         ));
 	}
 
@@ -1082,4 +1083,9 @@ class D
 			sort($methods['protected methods']);
 		return $methods;
 	}
+
+	public static function len($string)
+    {
+        self::pd(strlen($string));
+    }
 }
