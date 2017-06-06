@@ -91,6 +91,8 @@ class D
 	private static $_js_included = false;
     private static $_positions = array();
     private static $_pds_exception=false;
+    private static $_profile = [];
+    private static $_profile_cost = [];
 
     public static function pdsException()
     {
@@ -179,7 +181,7 @@ class D
 	public static function logc()
 	{
 		self::$_clear = true;
-		self::logInternal(func_get_args());
+		self::logInternal(self::initLogcDefaultArgs(func_get_args()));
 	}
 	
 	/**
@@ -212,7 +214,7 @@ class D
 	public static function logce()
 	{
 		self::$_clear = true;
-		self::logInternal(func_get_args(), true);
+		self::logInternal(self::initLogcDefaultArgs(func_get_args()), true);
 	}
 	
 	/**
@@ -228,6 +230,20 @@ class D
 			exit('You must input data when using D methods.');
 		}
 	}
+
+    /**
+     * 内部调用方法，当logc()/logce()没有给参数时，打印默认的内容标识重新初始化日志文件内容，
+     * 方便在需要重新初始化日志文件内容时可以不传参数.
+     * @return array
+     */
+	private static function initLogcDefaultArgs($args)
+    {
+        if ($args === array()){
+            return array('Rebootint the log file ... ' . rand());
+        }else{
+            return $args;
+        }
+    }
 	
 	/**
 	 * 内部调用方法，打印参数并高亮显示输出.
@@ -719,6 +735,46 @@ class D
 		}
 		self::pd(date('Y-m-d H:i:s', $timestamp));
 	}
+
+	public static function beginProfile($token)
+    {
+        if(!isset(self::$_profile[$token])){
+            self::$_profile[$token] = microtime(true);
+        }else{
+            throw new Exception('Profile token ' . $token . ' has been existent.');
+        }
+    }
+
+    public static function endProfile($token)
+    {
+        if(isset(self::$_profile[$token])){
+            $now = microtime(true);
+            $last = self::$_profile[$token];
+            $cost = $now - $last;
+
+            // log cost for compare profile
+            self::$_profile_cost[$token] = $cost;
+            self::log($cost);
+        }else{
+            throw new Exception('Profile token ' . $token . ' is not found.');
+        }
+    }
+
+    public static function cmpProfile($token_new, $token_old)
+    {
+        if (!isset(self::$_profile_cost[$token_old])){
+            throw new Exception('Profile token ' . $token_old . ' is not found.');
+        }
+
+        if (!isset(self::$_profile_cost[$token_new])){
+            throw new Exception('Profile token ' . $token_new . ' is not found.');
+        }
+
+        $diff = self::$_profile_cost[$token_new] - self::$_profile_cost[$token_old];
+        $percent = ($diff / self::$_profile_cost[$token_old]) * 100;
+        $percent = number_format($percent, 2) . '%';
+        self::log(array('diff'=>$diff, 'percent'=>$percent));
+    }
 	
 	public static function count($items)
 	{
