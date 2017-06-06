@@ -222,7 +222,7 @@ class D
 	 * @params array $args 被打印的参数列表数组.
 	 * 要求必须提供被打印参数列表.
 	 */
-	private static function init_args($args)
+	private static function initArgs($args)
 	{
 		$count = count($args);
 		if ($count == 0)
@@ -255,7 +255,7 @@ class D
 	{
 		if (!self::$_closed)
 		{
-			self::init_args($args);
+			self::initArgs($args);
 			
 			self::$_arg_pos = 0;
 			foreach ($args as $arg)
@@ -320,7 +320,7 @@ class D
 	{
 		if (!self::$_closed)
 		{
-			self::init_args($args);
+			self::initArgs($args);
 				
 			self::$_arg_pos = 0;
 			foreach ($args as $arg)
@@ -354,7 +354,7 @@ class D
 		{
 			if (DUMPER_LOG_ACTIVE)
 			{
-				self::init_args($args);
+				self::initArgs($args);
 				
 				self::$_arg_pos = 0;
 				foreach ($args as $arg)
