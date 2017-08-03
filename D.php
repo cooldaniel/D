@@ -1086,6 +1086,10 @@ class D
                 {
                     self::discardOutput();
                 }
+
+                // stop processing this error by the next handler
+                exit(1);
+
             }catch(Exception $e){
                 // use the most primitive way to log error
 				$msg = get_class($e).': '.$e->getMessage().' ('.$e->getFile().':'.$e->getLine().")\n";
@@ -1121,6 +1125,10 @@ class D
             {
                 self::discardOutput();
             }
+
+            // stop processing this error by the next handler
+            exit(1);
+
         }catch(Exception $e){
             // use the most primitive way to log error
 			$msg = get_class($e).': '.$e->getMessage().' ('.$e->getFile().':'.$e->getLine().")\n";
