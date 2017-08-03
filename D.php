@@ -139,6 +139,22 @@ class D
 	}
 
     /**
+     * 设置字符集为GBK.
+     */
+	public static function gbk()
+    {
+        self::$_iconv = self::GBK;
+    }
+
+    /**
+     * 设置字符集为utf8.
+     */
+    public static function utf8()
+    {
+        self::$_iconv = self::UTF8;
+    }
+
+    /**
      * 在当前页面输出字符集设置header.
      */
     public static function header($charset=null)
@@ -364,19 +380,8 @@ class D
 					$content = self::prefixMessage($content);
 					$content = date('H:i:s Y/m/d', time()) . ' ' . $content;
 					$content = self::iconv($content);
-					
-					// save to file
-					$file = self::getLogPath() . '/DumperLogFile.ig.txt';
-					if (self::$_clear)
-					{
-						file_put_contents($file, $content);
-						self::$_clear = false;
-					}
-					else
-					{
-						file_put_contents($file, $content, FILE_APPEND);
-					}
-					
+
+                    self::logSaveToFile($content);
 					self::$_arg_pos++;
 				}
 				self::$_arg_pos = 0;
@@ -388,6 +393,21 @@ class D
 			}
 		}
 	}
+
+	// save to file
+	private static function logSaveToFile($content)
+    {
+        $file = self::getLogPath() . '/DumperLogFile.ig.txt';
+        if (self::$_clear)
+        {
+            file_put_contents($file, $content);
+            self::$_clear = false;
+        }
+        else
+        {
+            file_put_contents($file, $content, FILE_APPEND);
+        }
+    }
 
 	/**
      * 获取记录文件所在目录.
@@ -698,7 +718,7 @@ class D
 	{
 		if (!self::$_closed)
 		{
-			echo '<pre> ~~~ footprint ~~~ </pre>';
+			echo '<pre> ~~~ footprint - '.rand().' ~~~ </pre>';
 		}
 	}
 	
@@ -785,15 +805,20 @@ class D
 		self::pde(count($items));
 	}
 	
-	public static function rand()
+	public static function rand($slight=false)
 	{
-		self::pd(rand());
+		$slight ? self::pds(rand()) : self::pd(rand());
 	}
 	
-	public static function rande()
+	public static function rande($slight=false)
 	{
-		self::pde(rand());
+		$slight ? self::pdse(rand()) : self::pde(rand());
 	}
+
+	public static function join()
+    {
+        return implode('-', func_get_args());
+    }
 	
 	public static function args($log=false)
 	{
@@ -813,20 +838,20 @@ class D
 			{
 				$object = new ReflectionMethod($caller['class'], $caller['function']);
 			}
+			$res = $caller['args'];
 			
 			// 参数名列表
-			//$caller['arg names'] = array();
-			foreach ($object->getParameters() as $param)
-			{
-				//$caller['params'][] = $param;
-				//$caller['arg names'][] = $param->getName();
-			}
+//            $res = [];
+//			foreach ($object->getParameters() as $index => $param)
+//			{
+//                $res[$param->getName()] = $caller['args'][$index];
+//			}
 		}
 		else
 		{
-			$caller = 'Not inside a function.';
+			$res = 'Not inside a function.';
 		}
-		$log ? self::log($caller) : self::pd($caller);
+		$log ? self::log($res) : self::pd($res);
 	}
 	
 	public static function post(){self::pd($_POST);}
@@ -879,6 +904,12 @@ class D
 		);
 		$log ? D::log($usage) : D::pd($usage);
 	}
+
+	public static function usagee($log=false)
+    {
+        self::usage($log);
+        exit;
+    }
 	
 	/**
 	 * 转换秒数成年月日数据.
@@ -926,101 +957,181 @@ class D
 		$items['seconds'] = floor($seconds);
 		self::pd($items);
 	}
-	
-	// @todo 2012/11/5 等待重新开发
-	public static function trace($terminate=true, $html=true)
+
+	// echo trace as plain text string
+	public static function trace($filter=false)
 	{
-		$d=debug_backtrace();
-		$all = true;
-		if($all)
-		{
-			foreach($d as $k=>$item)
-				if(strpos($item['file'],'D.php')!==false)
-					unset($d[$k]);
-			$new=array();
-			foreach($d as $k=>$item)
-				$new[]=$item;
-			$d=$new;
-		}
-		else
-		{
-			$sn=0;
-			foreach($d as $k=>$item)
-			{
-				if(strpos($item['file'],'D.php')===false)
-				{
-					$sn=$k;
-					break;
-				}
-			}
-			$d=array($d[$sn]);
-		}
-		
-		$trace='';
-		foreach($d as $k=>$v)
-		{
-			$prefix = '00';
-			if($k<100)
-				$prefix = '0';
-			if($k<10)
-				$prefix = '00';
-			$k = $prefix . $k;
-			if(isset($v['class']))
-				$trace.="#{$k} {$v['file']}({$v['line']}): {$v['class']}{$v['type']}{$v['function']}()\n";
-			else
-				$trace.="#{$k} {$v['file']}({$v['line']}) {$v['function']}()\n";
-		}
-		$trace.="#{main} REQUEST_URI=".$_SERVER['REQUEST_URI']."\n\n";
-		echo  $html ? nl2br($trace) : $trace;
-        $terminate && exit;
+        echo self::traceInternal($filter);
 	}
-	
-	
+
+    // echo trace as html string
+	public static function traceHtml($filter=false)
+    {
+        echo nl2br(self::traceInternal($filter));
+    }
+
+	// return trace as plain text string
+	public static function getTrace($filter=false)
+    {
+        return self::traceInternal($filter);
+    }
+
+    // return trace as plain text string
+    public static function getTraceAsArray($filter=false)
+    {
+        return self::traceInternal($filter, false);
+    }
+
+    /**
+     * 生成堆栈信息.
+     * @param bool $filter 要过滤掉的路径关键词，false表示未指定，默认是false.
+     * @param bool $return_string true表示以字符串格式返回，false表示按数组格式返回，默认是true.
+     * @return array|string 按字符串返回时，按\n换行符换行；按数组返回时，不含换行符.
+     */
+	private static function traceInternal($filter=false, $return_string=true)
+    {
+        // init filter param
+        if (is_string($filter) && trim($filter) != ''){
+            $filter = trim($filter);
+        }else{
+            $filter = false;
+        }
+
+        $res = [];
+        $d = debug_backtrace();
+        $k = 0;
+		foreach($d as $i=>$v)
+		{
+            $file = isset($v['file']) ? $v['file'] : '';
+            $line = isset($v['line']) ? $v['line'] : '';
+
+            // filter
+            if ($filter && strpos($file, $filter) !== false){
+                continue;
+            }
+            if (strpos($file, 'D.php') !== false){
+                continue;
+            }
+
+            $prefix = '00';
+			if($k<100){
+				$prefix = '0';
+            }
+			if($k<10){
+				$prefix = '00';
+            }
+
+			if(isset($v['class'])){
+				$text = '#'.$prefix.$k.' '.$file.'('.$line.'): '.$v['class'].$v['type'].$v['function'].'()';
+            }else{
+				$text = '#'.$prefix.$k.' '.$file.'('.$line.'): '.$v['function'].'()';
+            }
+
+            // add line break as string
+            if ($return_string){
+                $text .= "\n";
+            }
+
+            $res[] = $text;
+
+            $k++;
+		}
+		$request_uri = isset($_SERVER['REQUEST_URI']) ? $_SERVER['REQUEST_URI'] : '';
+		$res[] = "#{main} REQUEST_URI={$request_uri}";
+
+        return $return_string ? implode($res) : $res;
+    }
 	
 	public static function handleError($error, $message, $file, $line)
 	{
 		restore_error_handler();
 		//restore_exception_handler();
-		
+
 		if ($error & error_reporting())
 		{
-            $method = self::$_pds_exception ? 'pds' : 'pd';
-			self::$_message = 'Error';
-			self::pds(array(
-				'error' => $error,
-				'message' => $message,
-				'file' => $file,
-				'line' => $line
-			));
-			self::$_message = '';
-		}
-		
-		if (DUMPER_HANDLER_DISCARD_OUTPUT)
-		{
-			self::discardOutput();
-		}
+            try{
+
+                $log="$message ($file:$line)\nStack trace:\n";
+                $trace=debug_backtrace();
+                // skip the first 3 stacks as they do not tell the error position
+                if(count($trace)>3)
+                    $trace=array_slice($trace,3);
+                foreach($trace as $i=>$t)
+                {
+                    if(!isset($t['file']))
+                        $t['file']='unknown';
+                    if(!isset($t['line']))
+                        $t['line']=0;
+                    if(!isset($t['function']))
+                        $t['function']='unknown';
+                    $log.="#$i {$t['file']}({$t['line']}): ";
+                    if(isset($t['object']) && is_object($t['object']))
+                        $log.=get_class($t['object']).'->';
+                    $log.="{$t['function']}()\n";
+                }
+                if(isset($_SERVER['REQUEST_URI']))
+                    $log.='REQUEST_URI='.$_SERVER['REQUEST_URI'];
+
+                $method = self::$_pds_exception ? 'pds' : 'pd';
+                self::$_message = 'Error';
+                self::$method(array(
+                    'error' => $error,
+                    'message' => $message,
+                    'file' => $file,
+                    'line' => $line
+                ));
+                self::$_message = '';
+
+                if (DUMPER_HANDLER_DISCARD_OUTPUT)
+                {
+                    self::discardOutput();
+                }
+            }catch(Exception $e){
+                // use the most primitive way to log error
+				$msg = get_class($e).': '.$e->getMessage().' ('.$e->getFile().':'.$e->getLine().")\n";
+				$msg .= $e->getTraceAsString()."\n";
+				$msg .= "Previous error:\n";
+				$msg .= $log."\n";
+				$msg .= '$_SERVER='.var_export($_SERVER,true);
+				error_log($msg);
+				exit(1);
+            }
+        }
 	}
 	
-	public static function handleException($e)
+	public static function handleException($exception)
 	{
 		//restore_error_handler();
 		restore_exception_handler();
 
         $method = self::$_pds_exception ? 'pds' : 'pd';
 		self::$_message = 'Exception';
-		self::pds(array(
-			'exception' => $e->getCode(),
-			'message' => $e->getMessage(),
-			'file' => $e->getFile(),
-			'line' => $e->getLine(),
-			'trace' => $e->getTrace(),
-		));
-		self::$_message = '';
-		
-		if (DUMPER_HANDLER_DISCARD_OUTPUT)
-		{
-			self::discardOutput();
-		}
+
+        try{
+            self::$method(array(
+                'exception' => $exception->getCode(),
+                'message' => $exception->getMessage(),
+                'file' => $exception->getFile(),
+                'line' => $exception->getLine(),
+                'trace' => $exception->getTrace(),
+            ));
+            self::$_message = '';
+
+            if (DUMPER_HANDLER_DISCARD_OUTPUT)
+            {
+                self::discardOutput();
+            }
+        }catch(Exception $e){
+            // use the most primitive way to log error
+			$msg = get_class($e).': '.$e->getMessage().' ('.$e->getFile().':'.$e->getLine().")\n";
+			$msg .= $e->getTraceAsString()."\n";
+			$msg .= "Previous exception:\n";
+			$msg .= get_class($exception).': '.$exception->getMessage().' ('.$exception->getFile().':'.$exception->getLine().")\n";
+			$msg .= $exception->getTraceAsString()."\n";
+			$msg .= '$_SERVER='.var_export($_SERVER,true);
+			error_log($msg);
+			exit(1);
+        }
 	}
 	
 	// 丢弃输出，该功能未实现
@@ -1143,5 +1254,17 @@ class D
 	public static function len($string)
     {
         self::pd(strlen($string));
+    }
+
+    public static function json($data)
+    {
+        header('Content-Type:application/json');
+        echo json_encode($data);
+    }
+
+    public static function jsone($data)
+    {
+        self::json($data);
+        exit;
     }
 }
