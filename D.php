@@ -1264,15 +1264,16 @@ class D
         self::pd(strlen($string));
     }
 
-    public static function json($data)
+    public static function json()
     {
         header('Content-Type:application/json');
-        echo json_encode($data);
+        echo json_encode(func_get_args());
     }
 
-    public static function jsone($data)
+    public static function jsone()
     {
-        self::json($data);
+        header('Content-Type:application/json');
+        echo json_encode(func_get_args());
         exit;
     }
 }
