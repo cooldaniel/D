@@ -1263,8 +1263,7 @@ class D
     {
         self::pd(strlen($string));
     }
-
-    // json
+    
     public static function json()
     {
         header('Content-Type:application/json');
