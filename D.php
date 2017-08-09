@@ -547,7 +547,7 @@ class D
 	 */
 	private static function prefixMessage($content, $highlight=false)
 	{
-        $d = debug_backtrace();
+        $d = debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS | !DEBUG_BACKTRACE_PROVIDE_OBJECT);
 
         // 调用位置
         $v = array();
@@ -822,7 +822,7 @@ class D
 	
 	public static function args($log=false)
 	{
-		$d = debug_backtrace();
+		$d = debug_backtrace(!DEBUG_BACKTRACE_PROVIDE_OBJECT);
 		
 		// 取第二项
 		if (isset($d[1]))
@@ -998,7 +998,7 @@ class D
         }
 
         $res = [];
-        $d = debug_backtrace();
+        $d = debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS | !DEBUG_BACKTRACE_PROVIDE_OBJECT);
         $k = 0;
 		foreach($d as $i=>$v)
 		{
@@ -1052,7 +1052,7 @@ class D
             try{
 
                 $log="$message ($file:$line)\nStack trace:\n";
-                $trace=debug_backtrace();
+                $trace = debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS | !DEBUG_BACKTRACE_PROVIDE_OBJECT);
                 // skip the first 3 stacks as they do not tell the error position
                 if(count($trace)>3)
                     $trace=array_slice($trace,3);
