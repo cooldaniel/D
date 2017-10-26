@@ -255,7 +255,7 @@ class D
 	private static function initLogcDefaultArgs($args)
     {
         if ($args === array()){
-            return array('Rebootint the log file ... ' . rand());
+            return array('Rebooting the log file ... ' . rand());
         }else{
             return $args;
         }
@@ -356,6 +356,15 @@ class D
 			}
 		}
 	}
+
+	public static function msecDate($timestamp=null)
+    {
+        if (!$timestamp){
+            $timestamp = microtime(true);
+        }
+        list($sec, $usec) = explode(".", $timestamp);
+        return date('H:i:s', $sec) . '.' . $usec . ' ' . date('Y/m/d', $sec);
+    }
 	
 	/**
 	 * 内部调用方法，打印参数并将结果记录到文件中.
@@ -378,7 +387,7 @@ class D
 					$content = self::pdo($arg);
 				
 					$content = self::prefixMessage($content);
-					$content = date('H:i:s Y/m/d', time()) . ' ' . $content;
+					$content = self::msecDate() . ' ' . $content;
 					$content = self::iconv($content);
 
                     self::logSaveToFile($content);
@@ -710,7 +719,11 @@ class D
 	{
 		if (!self::$_closed)
 		{
-			exit('<pre> !!! breakpoint !!! </pre>');
+            if (func_num_args()){
+                self::pde(func_num_args());
+            }else{
+			    exit('<pre> !!! breakpoint !!! </pre>');
+            }
 		}
 	}
 	
@@ -819,7 +832,11 @@ class D
     {
         return implode('-', func_get_args());
     }
-	
+
+    /**
+     * @param bool $log
+     * @todo 对匿名函数不起作用.
+     */
 	public static function args($log=false)
 	{
 		$d = debug_backtrace(!DEBUG_BACKTRACE_PROVIDE_OBJECT);
@@ -891,17 +908,33 @@ class D
     }
     public static function igete($name){self::pde(ini_get($name));}
 
-	public static function usage($log=false)
+	public static function usage($string=null, $log=false)
 	{
-		$u = memory_get_usage();
-		$pu = memory_get_peak_usage();
-		$k = 1024;
+        $k = 1024;
 		$m = 1024 * 1024;
-		$usage = array(
-			'memory_get_usage'=>array('B'=>$u, 'K'=>$u/$k, 'M'=>$u/$m),
-			'memory_get_peak_usage'=>array('B'=>$pu, 'K'=>$pu/$k, 'M'=>$pu/$m),
-			'memory_limit'=>ini_get('memory_limit'),
-		);
+
+        if ($string === null){
+            $u = memory_get_usage();
+            $u_real = memory_get_usage(true);
+            $pu = memory_get_peak_usage();
+            $pu_real = memory_get_peak_usage(true);
+
+            $usage = array(
+                'memory_get_usage'=>array('B'=>$u, 'K'=>$u/$k, 'M'=>$u/$m),
+                'memory_get_usage_real'=>array('B'=>$u_real, 'K'=>$u_real/$k, 'M'=>$u_real/$m),
+                'memory_get_peak_usage'=>array('B'=>$pu, 'K'=>$pu/$k, 'M'=>$pu/$m),
+                'memory_get_peak_usage_real'=>array('B'=>$pu_real, 'K'=>$pu_real/$k, 'M'=>$pu_real/$m),
+                'memory_limit'=>ini_get('memory_limit'),
+            );
+        }
+        else{
+            $u = mb_strwidth($string, 'UTF-8');
+            $usage = array(
+                'string_usage'=>array('B'=>$u, 'K'=>$u/$k, 'M'=>$u/$m),
+                'memory_limit'=>ini_get('memory_limit'),
+            );
+        }
+
 		$log ? D::log($usage) : D::pd($usage);
 	}
 
@@ -968,6 +1001,12 @@ class D
 	public static function traceHtml($filter=false)
     {
         echo nl2br(self::traceInternal($filter));
+    }
+
+    // echo trace as html string
+	public static function traceArray($filter=false)
+    {
+        self::pd(self::getTraceAsArray($filter));
     }
 
 	// return trace as plain text string
