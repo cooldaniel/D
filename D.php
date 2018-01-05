@@ -93,6 +93,7 @@ class D
     private static $_pds_exception=false;
     private static $_profile = [];
     private static $_profile_cost = [];
+    private static $_first_log = false;
 
     public static function pdsException()
     {
@@ -188,6 +189,10 @@ class D
 	 */
 	public static function log()
 	{
+        if (self::$_first_log === false){
+            self::$_clear = true;
+            self::$_first_log = true;
+        }
 		self::logInternal(func_get_args());
 	}
 	
@@ -357,13 +362,17 @@ class D
 		}
 	}
 
-	public static function msecDate($timestamp=null)
+	public static function msecDate($timestamp=null, $timezone=false)
     {
         if (!$timestamp){
             $timestamp = microtime(true);
         }
         list($sec, $usec) = explode(".", $timestamp);
-        return date('H:i:s', $sec) . '.' . $usec . ' ' . date('Y/m/d', $sec);
+        $res = date('H:i:s', $sec) . '.' . $usec . ' ' . date('Y/m/d', $sec);
+        if ($timezone){
+            $res .= ' ' . date_default_timezone_get();
+        }
+        return $res;
     }
 	
 	/**
@@ -387,7 +396,7 @@ class D
 					$content = self::pdo($arg);
 				
 					$content = self::prefixMessage($content);
-					$content = self::msecDate() . ' ' . $content;
+					$content = self::msecDate(null, true) . ' ' . $content;
 					$content = self::iconv($content);
 
                     self::logSaveToFile($content);
@@ -734,6 +743,15 @@ class D
 			echo '<pre> ~~~ footprint - '.rand().' ~~~ </pre>';
 		}
 	}
+
+	public static function blank($num=3, $html=true)
+    {
+        if (!self::$_closed)
+		{
+            $str = $html ? "<br/>" : "\n";
+            echo str_repeat($str, $num);
+		}
+    }
 	
 	public static function rp($file)
 	{
@@ -1303,16 +1321,121 @@ class D
         self::pd(strlen($string));
     }
     
-    public static function json()
+    public static function json($header=false)
     {
-        header('Content-Type:application/json');
+        if ($header){
+            header('Content-Type:application/json; Charset=utf-8;');
+        }
         echo json_encode(func_get_args());
     }
 
-    public static function jsone()
+    public static function jsone($header=false)
     {
-        header('Content-Type:application/json');
+        if ($header){
+            header('Content-Type:application/json; Charset=utf-8;');
+        }
         echo json_encode(func_get_args());
         exit;
     }
+
+    public static function met($sec=100)
+    {
+        ini_set('max_execution_time', $sec);
+    }
+
+    public static function curlToFiddler($ch)
+    {
+        curl_setopt($ch, CURLOPT_PROXY,'127.0.0.1:8888');
+    }
+
+    public static function curlLog($ch)
+    {
+        $hd = fopen(self::getLogPath().'/curllog_'.date('YmdHis').'_'.rand().'.log', 'w');
+        curl_setopt($ch, CURLOPT_STDERR , $hd);
+    }
+
+    // 转换数组到postman格式
+    public static function postman($data, &$res='', $prefix='')
+    {
+        foreach ($data as $index => $row){
+            if (is_array($row)){
+                $prefix_next = ($prefix == '') ? $index : $prefix . "[{$index}]";
+                self::postman($row, $res, $prefix_next);
+            }else{
+                // 前缀为空表示一维数组，否则表示多维数组
+                if ($prefix == '') {
+                    $res .= "\n{$index}:{$row}";
+                } else {
+                    $res .= "\n{$prefix}[{$index}]:{$row}";
+                }
+            }
+        }
+    }
+
+    public static function unpostman($postman, &$res)
+    {
+        $lines = explode("\n", $postman);
+        foreach ($lines as &$line) {
+            $line = trim($line);
+            $map = explode(':', $line);
+            if (is_string($map[1])) {
+                $line = "'{$map[0]}' => '{$map[1]}',";
+            } else {
+                $line = "'{$map[0]}' => {$map[1]},";
+            }
+        }
+        $array = implode("", $lines);
+        $array = rtrim($array, ",");
+        $array = "[" . $array . "]";
+        $res = self::eval($array);
+        \D::log($res, $lines);
+    }
+
+    // 转换数组到likearray格式
+    public static function likearray($data, &$res='', $prefix='', $level=1)
+    {
+        $res .= "[";
+        foreach ($data as $index => $row){
+            if (is_array($row)){
+                $prefix_next = ($prefix == '') ? $index : $prefix . "[{$index}]";
+                self::likearray($row, $res, $prefix_next, $level+1);
+            }else{
+                $space = str_repeat(" ", $level*4);
+                $res .= "\n{$space}'{$index}' => '{$row}'";
+            }
+        }
+        $res .= "\n]";
+    }
+
+    /**
+     * @todo 目前只能处理一维数组.
+     * @param $likearray
+     * @param $res
+     */
+    public static function unlikearray($likearray, &$res)
+    {
+        // array - add commas
+        $lines = explode("\n", $likearray);
+        foreach ($lines as &$line) {
+            if (trim($line) != '[' && trim($line) != ']' && trim($line) != 'array(' && trim($line) != ');') {
+                $line = trim($line, "\r\n") . ",\n";
+            }
+        }
+        $array = implode("", $lines);
+        $res = self::eval($array);
+    }
+
+    public static function eval($_expression_, $_data_=array())
+	{
+		if(is_string($_expression_))
+		{
+			extract($_data_);
+			return eval('return '.$_expression_.';');
+		}
+		else
+		{
+			$_data_[]=self;
+			return call_user_func_array($_expression_, $_data_);
+		}
+	}
 }
