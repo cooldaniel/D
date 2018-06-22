@@ -94,10 +94,19 @@ class D
     private static $_profile = [];
     private static $_profile_cost = [];
     private static $_first_log = false;
+    private static $_no_clean = false;
 
     public static function pdsException()
     {
         self::$_pds_exception = true;
+    }
+
+    /**
+     * 跳过"第一次记录时清空之前的记录"的逻辑
+     */
+    public static function noclean()
+    {
+        self::$_no_clean = true;
     }
 
 	/**
@@ -189,10 +198,17 @@ class D
 	 */
 	public static function log()
 	{
+        // 第一次记录时清空之前的记录
         if (self::$_first_log === false){
             self::$_clear = true;
             self::$_first_log = true;
         }
+
+        // 跳过"第一次记录时清空之前的记录"的逻辑
+        if (self::$_no_clean === true){
+            self::$_clear = false;
+        }
+
 		self::logInternal(func_get_args());
 	}
 	
@@ -226,6 +242,17 @@ class D
 	 */
 	public static function loge()
 	{
+        // 第一次记录时清空之前的记录
+        if (self::$_first_log === false){
+            self::$_clear = true;
+            self::$_first_log = true;
+        }
+
+        // 跳过"第一次记录时清空之前的记录"的逻辑
+        if (self::$_no_clean === true){
+            self::$_clear = false;
+        }
+
 		self::logInternal(func_get_args(), true);
 	}
 	
@@ -787,7 +814,7 @@ class D
 		self::pd(date('Y-m-d H:i:s', $timestamp));
 	}
 
-	public static function beginProfile($token)
+	public static function beginProfile($token='profile')
     {
         if(!isset(self::$_profile[$token])){
             self::$_profile[$token] = microtime(true);
@@ -796,7 +823,7 @@ class D
         }
     }
 
-    public static function endProfile($token)
+    public static function endProfile($token='profile')
     {
         if(isset(self::$_profile[$token])){
             $now = microtime(true);
@@ -926,12 +953,12 @@ class D
     }
     public static function igete($name){self::pde(ini_get($name));}
 
-	public static function usage($string=null, $log=false)
+	public static function usage($log=false, $string=false)
 	{
         $k = 1024;
 		$m = 1024 * 1024;
 
-        if ($string === null){
+        if (!$string){
             $u = memory_get_usage();
             $u_real = memory_get_usage(true);
             $pu = memory_get_peak_usage();
@@ -1008,6 +1035,11 @@ class D
 		$items['seconds'] = floor($seconds);
 		self::pd($items);
 	}
+
+	public static function tracelog($filter=false)
+    {
+        self::log(self::getTraceAsArray($filter));
+    }
 
 	// echo trace as plain text string
 	public static function trace($filter=false)
@@ -1129,16 +1161,26 @@ class D
                 if(isset($_SERVER['REQUEST_URI']))
                     $log.='REQUEST_URI='.$_SERVER['REQUEST_URI'];
 
-                $method = self::$_pds_exception ? 'pds' : 'pd';
+                // set message
                 self::$_message = 'Error';
-                self::$method(array(
+
+                // print
+                $data = array(
                     'error' => $error,
                     'message' => $message,
                     'file' => $file,
                     'line' => $line
-                ));
+                );
+                $method = self::$_pds_exception ? 'pds' : 'pd';
+                self::$method($data);
+
+                // log
+                self::log($data);
+
+                // reset message
                 self::$_message = '';
 
+                // discard output
                 if (DUMPER_HANDLER_DISCARD_OUTPUT)
                 {
                     self::discardOutput();
@@ -1165,19 +1207,29 @@ class D
 		//restore_error_handler();
 		restore_exception_handler();
 
-        $method = self::$_pds_exception ? 'pds' : 'pd';
-		self::$_message = 'Exception';
-
         try{
-            self::$method(array(
+
+            // set message
+		    self::$_message = 'Exception';
+
+            // print
+            $data = array(
                 'exception' => $exception->getCode(),
                 'message' => $exception->getMessage(),
                 'file' => $exception->getFile(),
                 'line' => $exception->getLine(),
                 'trace' => $exception->getTrace(),
-            ));
+            );
+            $method = self::$_pds_exception ? 'pds' : 'pd';
+            self::$method($data);
+
+            // log
+            self::log($data);
+
+            // reset message
             self::$_message = '';
 
+            // discard output
             if (DUMPER_HANDLER_DISCARD_OUTPUT)
             {
                 self::discardOutput();
@@ -1240,7 +1292,21 @@ class D
 	 */
 	public static function ref($class, $highlight=true)
 	{
-		if (is_string($class) && (trim($class) != ''))
+		$data = self::refExplodeInternal($class);
+		$highlight ? self::pd($data) : self::pds($data);
+	}
+	
+	/**
+	 * 同 {@link ref}，但会终止程序.
+	 */
+	public static function refe($class, $highhight=true)
+	{
+		exit(self::ref($class, $highhight));
+	}
+
+    private static function refExplodeInternal($class)
+    {
+        if (is_string($class) && (trim($class) != ''))
 		{
 			$object = new ReflectionClass($class);
 		}
@@ -1252,16 +1318,8 @@ class D
 		{
 			throw new Exception('Class name or object should be given.');
 		}
-		$highlight ? self::pd(self::refExplode($object)) : self::pds(self::refExplode($object));
-	}
-	
-	/**
-	 * 同 {@link ref}，但会终止程序.
-	 */
-	public static function refe($class, $highhight=true)
-	{
-		exit(self::ref($class, $highhight));
-	}
+		return self::refExplode($object);
+    }
 	
 	// explode reflection object
 	private static function refExplode($object)
@@ -1321,24 +1379,35 @@ class D
         self::pd(strlen($string));
     }
     
-    public static function json($header=false)
+    public static function json($data, $header=false)
     {
         if ($header){
             header('Content-Type:application/json; Charset=utf-8;');
         }
-        echo json_encode(func_get_args());
+        echo json_encode($data, JSON_UNESCAPED_UNICODE & JSON_UNESCAPED_SLASHES);
     }
 
-    public static function jsone($header=false)
+    public static function jsone($data, $header=false)
     {
         if ($header){
             header('Content-Type:application/json; Charset=utf-8;');
         }
-        echo json_encode(func_get_args());
+        echo json_encode($data, JSON_UNESCAPED_UNICODE & JSON_UNESCAPED_SLASHES);
         exit;
     }
 
-    public static function met($sec=100)
+    public static function md5($data)
+    {
+        self::pd(md5(json_encode($data)));
+    }
+
+    public static function md5e($data)
+    {
+        self::md5($data);
+        exit;
+    }
+
+    public static function met($sec=1000000)
     {
         ini_set('max_execution_time', $sec);
     }
@@ -1438,4 +1507,54 @@ class D
 			return call_user_func_array($_expression_, $_data_);
 		}
 	}
+
+	public static function ob_start()
+    {
+        ob_start();
+    }
+
+    public static function ob_end($log=true)
+    {
+        if ($log) {
+            self::log(ob_get_clean());
+        } else {
+            return ob_get_clean();
+        }
+    }
+
+    public static function debugon()
+    {
+        xdebug_start_trace();
+    }
+
+    public static function debugoff()
+    {
+        xdebug_stop_trace();
+    }
+
+    public static function match($pattern, $data, $log=false)
+    {
+        if (is_string($data)) {
+            $data = [$data];
+        }
+
+        $res = [];
+        foreach ($data as $item) {
+            $item = (string)$item;
+            preg_match($pattern, $item, $res[$item]);
+        }
+        //var_dump($res);
+        //self::pd($res);
+        $log ? self::log($res) : self::pd($res);
+    }
+
+    public static function line($log=false)
+    {
+        $res = str_repeat("=", 100);
+        if ($log) {
+            self::log($res);
+        } else {
+            echo "<div>$res</div>";
+        }
+    }
 }
