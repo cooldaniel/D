@@ -7,6 +7,12 @@
  * @version 2.0
  */
 
+// 如果存在DB函数，表示在使用laravel的database库，加载use-laravel-database.php，引入它的命名空间
+// 不直接在这里使用use语句，是因为use语句前面不能有任何其它php语句
+if (function_exists('DB')) {
+    require_once dirname(__FILE__) . '/use-laravel-database.php';
+}
+
 /**
  * 类名D是Dumper的缩写，意指该静态类的功用是打印变量信息。它由一系列的变量打印方法组成：
  * 
@@ -71,6 +77,7 @@ defined('DUMPER_HANDLER_DISCARD_OUTPUT') or define('DUMPER_HANDLER_DISCARD_OUTPU
  * 该常量定义了在调试与非调试状态下使用D::log(), D::loge(), D::logc()时它们是否真正记录信息到文件，默认是true。
  */
 defined('DUMPER_LOG_ACTIVE') or define('DUMPER_LOG_ACTIVE', true);
+
 class D
 {
 	/**
@@ -497,7 +504,7 @@ class D
 	{
 		if (self::$_asa)
 		{
-			return CVarDumper::dumpAsString($arg);
+			return CVarDumper::dumpAsString($arg) . "\n";
 		}
 		else
 		{		
@@ -814,7 +821,12 @@ class D
 		self::pd(date('Y-m-d H:i:s', $timestamp));
 	}
 
-	public static function beginProfile($token='profile')
+    /**
+     * Begin a profile. The name p means 'beginProfile' for convenience.
+     * @param string $token
+     * @throws Exception
+     */
+	public static function p($token='profile')
     {
         if(!isset(self::$_profile[$token])){
             self::$_profile[$token] = microtime(true);
@@ -823,7 +835,12 @@ class D
         }
     }
 
-    public static function endProfile($token='profile')
+    /**
+     * End a profile. The name pp means 'endProfie' for convenience.
+     * @param string $token
+     * @throws Exception
+     */
+    public static function pp($token='profile')
     {
         if(isset(self::$_profile[$token])){
             $now = microtime(true);
@@ -838,7 +855,13 @@ class D
         }
     }
 
-    public static function cmpProfile($token_new, $token_old)
+    /**
+     * Compare two profile. The name p means 'compProfile' for convenience.
+     * @param $token_new
+     * @param $token_old
+     * @throws Exception
+     */
+    public static function pc($token_new, $token_old)
     {
         if (!isset(self::$_profile_cost[$token_old])){
             throw new Exception('Profile token ' . $token_old . ' is not found.');
@@ -1556,5 +1579,80 @@ class D
         } else {
             echo "<div>$res</div>";
         }
+    }
+
+    /**
+     * 将数据转成数组格式.
+     * 用于在使用laravel框架式，针对collection和model等存储数据的数据对象收集成数组，方便记录到日志查看.
+     * 获取数据后，记录到文件里.
+     * @param mixed $row 数组或者可以用数组方式访问的对象，否则抛出异常.
+     */
+    public static function arrayable($row)
+    {
+        if (!empty($row)) {
+
+            // 参数必须是数组或者可以用数组方式访问
+            // @todo 如果是对象，而且可以用数组方式访问，则假设它一定实现了toArray()，这里后续可能需要针对多种情况优化
+            if (!is_array($row) && !($row instanceof ArrayAccess)) {
+                throw new Exception('The data parameter must be an array. Your input is '.gettype($row));
+            }
+
+            // 如果是对象，则自动调用对象的toArray()方法转转成数组
+            if (is_object($row)) {
+                $row = $row->toArray();
+            }
+
+            // 针对数组遍历获取数据
+            $res = self::arrayableInternal($row);
+
+            // 记录
+            self::log($res);
+
+        } else {
+
+            self::log($row);
+        }
+    }
+
+    /**
+     * 将数据转成数组格式.
+     * 用于在使用laravel框架式，针对collection和model等存储数据的数据对象收集成数组，方便记录到日志查看.
+     * 该方法只允许被{@see arrayable}调用.
+     * @param array $row 数组数据.如果元素是对象而且可以用数组方式访问，则调用toArray()方法获取数据.
+     * @return array 返回处理之后的数组.
+     */
+    private static function arrayableInternal($row)
+    {
+        // 针对可以用数组方式访问的元素值，调用它的toArray()方法转成数组
+        foreach ($row as $index => $value) {
+            if (is_object($value) && $value instanceof ArrayAccess) {
+                $row[$index] = $value->toArray();
+            }
+        }
+
+        // 继续递归处理下一级
+        foreach ($row as $index => $value) {
+            if (is_array($value)) {
+                $row[$index] = self::arrayableInternal($value);
+            }
+        }
+
+        return $row;
+    }
+
+    /**
+     * Begin the laravel database sql query log. The name s means 'beginSqlLog' for convenience.
+     */
+    public static function s()
+    {
+        DB::enableQueryLog();
+    }
+
+    /**
+     * End the laravel database sql query log. The name ss means 'endSqlLog' for convenience.
+     */
+    public static function ss()
+    {
+        self::log(DB::getQueryLog());
     }
 }

@@ -1,6 +1,8 @@
 <?php
 /**
- * D class file.
+ * D class autoload file.
+ *
+ * Autoload the D class if you want to load it just when it was used.
  * 
  * @author Daniel Luo <295313207@qq.com>
  * @copyright Copyright &copy; 2010-2015
