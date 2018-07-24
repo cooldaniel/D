@@ -326,7 +326,7 @@ class D
 				
 				// 默认只显示
 				$lines = explode("<br />", $content);
-				if (count($lines) > 11)
+				if (count($lines) > 25)
 				{
 					$content = str_replace('<code>', '<code class="hide">', $content);
 				}
@@ -1654,5 +1654,50 @@ class D
     public static function ss()
     {
         self::log(DB::getQueryLog());
+    }
+
+    public static function readpath($path, $exclude=[])
+    {
+        $files = [];
+
+        if (!file_exists($path)) {
+            throw new \Exception("路径 {$path} 不存在");
+        }
+
+        if (!is_dir($path)) {
+            throw new \Exception("路径 {$path} 不是一个目录");
+        }
+
+        if (!is_readable($path)) {
+            throw new \Exception("路径 {$path} 不可读");
+        }
+
+        $dir = opendir($path);
+        while ($file = readdir($dir)) {
+
+            // 过滤
+            if ($file == '.' || $file == '..' || in_array($file, $exclude)) {
+               continue;
+            }
+
+            $files[] = $file;
+        }
+
+        return $files;
+    }
+
+    public static function listpath($path, $exclude=[])
+    {
+        // 读取文件
+        $files = self::readpath($path, $exclude);
+
+        // 渲染
+        $html = '<div><ul>';
+        foreach ($files as $file) {
+            $html .= "<li><a href='./{$file}' target='_blank'>{$file}</a></li>";
+        }
+        $html .= '</ul></div>';
+
+        echo $html;
     }
 }
