@@ -117,19 +117,19 @@ class D
     }
 
 	/**
-	 * 关闭D组件.
+	 * 设置是否关闭D组件.
 	 */
-	public static function close()
+	public static function close($reverse=false)
 	{
-		self::$_closed = true;
+		self::$_closed = !$reverse;
 	}
 	
 	/**
 	 * 设置是否打印为数组.
 	 */
-	public static function asa()
+	public static function asa($reverse=false)
 	{
-		self::$_asa = true;
+		self::$_asa = !$reverse;
 	}
 
     /**
@@ -1653,7 +1653,46 @@ class D
      */
     public static function ss()
     {
-        self::log(DB::getQueryLog());
+        $data = DB::getQueryLog();
+
+        // 记录laravel数据库sql时，sql只有占位符和绑定数据，不方便复制查询，这里查找并替换问号
+        foreach ($data as &$row) {
+
+            // 没有绑定关系的不处理
+            if (empty($row['bindings'])) {
+                continue;
+            }
+
+            $query = $row['query'];
+            $bindings = $row['bindings'];
+
+            // 循环查找并替换
+            $start = 0; // 开始查找位置
+            $key = 0; // 绑定内容位置
+            while (($pos = strpos($query, '?', $start)) !== false) {
+
+                // 绑定内容
+                $value = $bindings[$key];
+
+                // 绑定内容是字符串，加双引号
+                if (is_string($value)) {
+                    $value = "'{$value}'";
+                }
+
+                // 替换问号出现的位置 - 截取问号前后部分，中间用值代替
+                $query = substr($query, 0, $pos) . $value . substr($query, $pos + 1);
+
+                // 查找下一个问号
+                $start = $pos+1;
+
+                // 绑定内容位置进一
+                $key++;
+            }
+
+            $row = array_merge(['replace'=>$query], $row);
+        }
+
+        self::log($data);
     }
 
     public static function readpath($path, $exclude=[])
