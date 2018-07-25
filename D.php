@@ -401,6 +401,8 @@ class D
         if (!$timestamp){
             $timestamp = microtime(true);
         }
+        // 固定小数位数，保持时间列对齐
+        $timestamp = number_format($timestamp, 6, '.', '');
         list($sec, $usec) = explode(".", $timestamp);
         $res = date('H:i:s', $sec) . '.' . $usec . ' ' . date('Y/m/d', $sec);
         if ($timezone){
@@ -1699,5 +1701,17 @@ class D
         $html .= '</ul></div>';
 
         echo $html;
+    }
+
+    public static function step($end=false)
+    {
+        $content = self::prefixMessage('');
+        if ($end) {
+            $content .= ' end';
+        } else {
+            $content .= ' begin';
+        }
+        $content = self::msecDate(null, true) . ' ' . $content . '';
+        self::logSaveToFile("$content\n");
     }
 }
