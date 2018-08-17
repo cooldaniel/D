@@ -78,6 +78,8 @@ defined('DUMPER_HANDLER_DISCARD_OUTPUT') or define('DUMPER_HANDLER_DISCARD_OUTPU
  */
 defined('DUMPER_LOG_ACTIVE') or define('DUMPER_LOG_ACTIVE', true);
 
+register_shutdown_function('D::shutdown');
+
 class D
 {
 	/**
@@ -102,6 +104,7 @@ class D
     private static $_profile_cost = [];
     private static $_first_log = false;
     private static $_no_clean = false;
+    private static $_shutdownLog = [];
 
     public static function pdsException()
     {
@@ -1616,6 +1619,12 @@ class D
         }
     }
 
+    public static function arrayablee($row)
+    {
+        self::arrayable($row);
+        exit();
+    }
+
     /**
      * 将数据转成数组格式.
      * 用于在使用laravel框架式，针对collection和model等存储数据的数据对象收集成数组，方便记录到日志查看.
@@ -1652,49 +1661,129 @@ class D
 
     /**
      * End the laravel database sql query log. The name ss means 'endSqlLog' for convenience.
+     * @param bool $asString Join the sql as one string when true.
      */
-    public static function ss()
+    public static function ss($asString=false)
     {
         $data = DB::getQueryLog();
 
-        // 记录laravel数据库sql时，sql只有占位符和绑定数据，不方便复制查询，这里查找并替换问号
+        $data = self::parseQueryLog($data);
+
+        // 生成标识
+        $slow = 1000;
         foreach ($data as &$row) {
+            unset($row['query'], $row['bindings']);
+            $row['sign'] = md5($row['replace']);
 
-            // 没有绑定关系的不处理
-            if (empty($row['bindings'])) {
-                continue;
+            if ($row['time'] > $slow) {
+                $row['slow'] = '慢，超过 ' . $slow / 1000 . ' 秒';
             }
+        }
 
-            $query = $row['query'];
-            $bindings = $row['bindings'];
+        // 标识列表
+        $signList = array_column($data, 'sign');
 
-            // 循环查找并替换
-            $start = 0; // 开始查找位置
-            $key = 0; // 绑定内容位置
-            while (($pos = strpos($query, '?', $start)) !== false) {
+        // 附加次数
+        foreach ($data as $index => &$row) {
 
-                // 绑定内容
-                $value = $bindings[$key];
+            $repeatRow = [];
 
-                // 绑定内容是字符串，加双引号
-                if (is_string($value)) {
-                    $value = "'{$value}'";
+            foreach ($signList as $key => $sign) {
+
+                // 跳过当前行
+                if ($index == $key) {
+                    continue;
                 }
 
-                // 替换问号出现的位置 - 截取问号前后部分，中间用值代替
-                $query = substr($query, 0, $pos) . $value . substr($query, $pos + 1);
-
-                // 查找下一个问号
-                $start = $pos+1;
-
-                // 绑定内容位置进一
-                $key++;
+                // 记录重复行号
+                if (strcmp($sign, $row['sign']) === 0) {
+                    $repeatRow[] = $key;
+                }
             }
 
-            $row = array_merge(['replace'=>$query], $row);
+            // 显示重复行号
+            if (count($repeatRow)) {
+                $row['repeat'] = '和 ' . implode(', ', $repeatRow) . ' 行重复，一共重复 ' . count($repeatRow) . ' 次';
+            }
+
+            unset($row['sign']);
         }
 
         self::log($data);
+    }
+
+    public static function sss()
+    {
+        $data = DB::getQueryLog();
+
+        $data = self::parseQueryLog($data);
+
+        if ($asString) {
+
+            // only join the query field
+            $data = array_column($data, 'query');
+
+            // format the sql line for pretty showing
+            $data = array_map(function ($value) {
+
+                // replace the (?,?,?) to (?) for reducing the sql
+                $value = preg_replace('/\(.*\)/', '(?)', $value);
+
+                // prepend md5 value to mark the line
+                $value = md5($value) . ' ' . $value;
+
+                return $value;
+
+            }, $data);
+
+            // join to one line with breaklines
+            $data = "\n" . count($data) . "\n" . implode("\n", $data) . "\n";
+        }
+
+        self::log($data);
+    }
+
+    private static function parseQueryLog($data)
+    {
+        // 记录laravel数据库sql时，sql只有占位符和绑定数据，不方便复制查询，这里查找并替换问号
+        foreach ($data as $index => $row) {
+
+            $query = $row['query'];
+
+            // 处理绑定关系
+            if (!empty($row['bindings'])) {
+                $bindings = $row['bindings'];
+
+                // 循环查找并替换
+                $start = 0; // 开始查找位置
+                $key = 0; // 绑定内容位置
+                while (($pos = strpos($query, '?', $start)) !== false) {
+
+                    // 绑定内容
+                    $value = $bindings[$key];
+
+                    // 绑定内容是字符串，加双引号
+                    if (is_string($value)) {
+                        $value = "'{$value}'";
+                    }
+
+                    // 替换问号出现的位置 - 截取问号前后部分，中间用值代替
+                    $query = substr($query, 0, $pos) . $value . substr($query, $pos + 1);
+
+                    // 查找下一个问号
+                    $start = $pos+1;
+
+                    // 绑定内容位置进一
+                    $key++;
+                }
+            }
+
+            $row = array_merge(['replace'=>$query], $row);
+
+            $data[$index] = $row;
+        }
+
+        return $data;
     }
 
     public static function readpath($path, $exclude=[])
@@ -1732,10 +1821,21 @@ class D
         // 读取文件
         $files = self::readpath($path, $exclude);
 
-        // 渲染
-        $html = '<div><ul>';
+        // 格式化
+        $data = [];
         foreach ($files as $file) {
-            $html .= "<li><a href='./{$file}' target='_blank'>{$file}</a></li>";
+            $data[] = ['text'=>$file, 'url'=>'./'.$file];
+        }
+
+        // 渲染
+        self::listurl($data);
+    }
+
+    public static function listurl($data)
+    {
+        $html = '<div><ul>';
+        foreach ($data as $row) {
+            $html .= "<li><a href='./{$row['url']}' target='_blank'>{$row['text']}</a></li>";
         }
         $html .= '</ul></div>';
 
@@ -1752,5 +1852,125 @@ class D
         }
         $content = self::msecDate(null, true) . ' ' . $content . '';
         self::logSaveToFile("$content\n");
+    }
+
+    public static function xdebug()
+    {
+        ini_set('xdebug.overload_var_dump', 0);
+    }
+
+    public static function shutdown()
+    {
+        if (!empty(self::$_shutdownLog)) {
+            self::log(self::$_shutdownLog);
+        }
+
+        \D::ss();
+    }
+
+    public static function shutdownLog($data)
+    {
+        self::$_shutdownLog[] = $data;
+    }
+
+    public static function tableList($data, $return=false)
+    {
+        $html = '<div>';
+
+        foreach ($data as $title => $list) {
+            $html .= '<div>';
+            $html .= '<h3>';
+            $html .= self::table($list, true);
+            $html .= '</h3>';
+            $html .= '</div>';
+        }
+
+        $html .= '</div>';
+
+        if ($return) {
+            return $html;
+        } else {
+            echo $html;
+        }
+    }
+
+    public static function table($data, $return=false)
+    {
+        $html = '<table>';
+
+        // header
+        $html .= '<thead>';
+
+        $multi = is_array(pos($data));
+
+        if ($multi) {
+            // 多维数组
+            $keyList = array_keys(pos($data));
+        } else {
+            // 一维数组
+            $keyList = array_keys($data);
+        }
+
+        foreach ($keyList as $item) {
+            $html .= '<th>';
+            $html .= $item;
+            $html .= '</th>';
+        }
+
+        $html .= '</thead>';
+
+        // body
+        $html .= '<tbody>';
+
+        foreach ($data as $row) {
+
+            if ($multi) {
+                foreach ($row as $item) {
+                    self::tableTd($html, $item);
+                }
+            } else {
+                self::tableTd($html, $row);
+            }
+        }
+
+        $html .= '</tbody>';
+        $html .= '</table>';
+
+        if ($return) {
+            return $html;
+        } else {
+            echo $html;
+        }
+    }
+
+    private static function tableTd(&$html, $item)
+    {
+        $html .= '<td>';
+        if (is_array($item) || is_object($item)) {
+            $html .= json_encode($item, JSON_UNESCAPED_UNICODE);
+        } else {
+            $html .= $item;
+        }
+
+        $html .= '</td>';
+    }
+
+    public static function br($count=2)
+    {
+        while ($count) {
+            echo '<br/>';
+            $count--;
+        }
+    }
+
+    public static function div($string, $return=false)
+    {
+        $string = '<div>'.$string.'</div>';
+
+        if ($return) {
+            return $string;
+        } else {
+            echo $string;
+        }
     }
 }
