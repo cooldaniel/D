@@ -1692,6 +1692,12 @@ class D
         // stat the query list
         $stat = QueryLog::stat($data, $timeTotal);
 
+        if (count($data)) {
+
+            // mark avg time
+            QueryLog::markAvgTime($data, $stat);
+        }
+
         // format and display stat info
         self::$_message = '$stat';
         self::log(QueryLog::formatStat($stat));
@@ -1937,6 +1943,8 @@ class QueryLog
     const TIME_TOTAL_LIMIT = 3000;
     const SQL_TIME_TOTAL_LIMIT = 1000;
 
+    private static $avgCountList;
+
     public static function parseQueryLog($data)
     {
         // 记录laravel数据库sql时，sql只有占位符和绑定数据，不方便复制查询，这里查找并替换问号
@@ -2050,7 +2058,9 @@ class QueryLog
         // total time stat
         $stat['time_total'] = $timeTotal;
         $stat['time_total_limit'] = self::TIME_TOTAL_LIMIT / 1000;
-        $stat['time_total_exceeded'] = self::getIsExceeded($stat['time_total'], $stat['time_total_limit']);
+        $timeTotalIsExceeded = self::getIsExceeded($stat['time_total'], $stat['time_total_limit']);
+        $stat['time_is_exceeded'] = $timeTotalIsExceeded;
+        $stat['time_total_exceeded'] = self::formatIsExceeded($timeTotalIsExceeded);
 
         // sql count
         $stat['sql_count_total'] = count($data);
@@ -2061,23 +2071,83 @@ class QueryLog
             $stat['sql_time_total_micro'] = array_sum(array_column($data, 'time'));
             $stat['sql_time_total'] = $stat['sql_time_total_micro'] / 1000;
             $stat['sql_time_total_limit'] = self::SQL_TIME_TOTAL_LIMIT / 1000;
-            $stat['sql_time_total_exceeded'] = self::getIsExceeded($stat['sql_time_total'], $stat['sql_time_total_limit']);
+            $sqlTimeTotalIsExceeded = self::getIsExceeded($stat['sql_time_total'], $stat['sql_time_total_limit']);
+            $stat['sql_time_is_exceeded'] = $sqlTimeTotalIsExceeded;
+            $stat['sql_time_total_exceeded'] = self::formatIsExceeded($sqlTimeTotalIsExceeded);
             $stat['sql_time_percent_of_total'] = self::getRate($timeTotal, $stat['sql_time_total']);
 
             // else time stat
             $stat['else_time_total'] = $timeTotal - $stat['sql_time_total'];
             $stat['else_time_total_limit'] = $stat['time_total_limit'] - $stat['sql_time_total_limit'];
-            $stat['else_time_total_exceeded'] = self::getIsExceeded($stat['else_time_total'], $stat['else_time_total_limit']);
+            $elseTimeTotalIsExceeded = self::getIsExceeded($stat['else_time_total'], $stat['else_time_total_limit']);
+            $stat['else_time_is_exceeded'] = $elseTimeTotalIsExceeded;
+            $stat['else_time_total_exceeded'] = self::formatIsExceeded($elseTimeTotalIsExceeded);
             $stat['else_time_percent_of_total'] = self::getRate($timeTotal, $stat['else_time_total']);
 
             // sql time avg
             $stat['sql_time_avg'] = $stat['sql_time_total'] / $stat['sql_count_total'];
             $stat['sql_time_avg_micro'] = $stat['sql_time_total_micro'] / $stat['sql_count_total'];
-            $stat['sql_exceeded_avg_count'] = 0;
+
+            // sql count avg
+            $avgCountList = self::getSqlExceededAvgList($stat['sql_time_avg_micro'], $data);
+            $avgCount = count($avgCountList);
+            if ($avgCount) {
+                $stat['sql_exceeded_avg_count'] = $avgCount . ' 个，分别是 ' . implode(', ', $avgCountList);
+            } else {
+                $stat['sql_exceeded_avg_count'] = '0 个';
+            }
+
+            // compare sql time avg with sql time total exceeded
+            if ($sqlTimeTotalIsExceeded['exceeded'] > 0) {
+                $stat['sql_time_avg_with_time_total_exceeded'] = sprintf('%.2f', $sqlTimeTotalIsExceeded['exceeded'] / $stat['sql_time_avg']);
+            } else {
+                $stat['sql_time_avg_with_time_total_exceeded'] = 0;
+            }
 
         }
 
         return $stat;
+    }
+
+    public static function markAvgTime(&$data, $stat)
+    {
+        // avg count list
+        $avgCountList = self::getSqlExceededAvgList($stat['sql_time_avg_micro'], $data);
+
+        // time elapse order
+        $timeList = array_column($data, 'time');
+        rsort($timeList);
+
+        foreach ($data as $index => &$row) {
+
+            // exceeded avg time
+            $isExceededAvgTime = in_array($index, $avgCountList);
+            if ($isExceededAvgTime) {
+
+                $row['exceeded_avg_time'] = '超过了平均时间（'.$stat['sql_time_avg_micro'].' 毫秒）';
+            }
+
+            // sort order
+            if ($isExceededAvgTime) {
+
+                $order = array_search($row['time'], $timeList) + 1;
+                $row['time_elapse_order'] = '耗时排名第 ' . $order . ' 位';
+            }
+        }
+    }
+
+    public static function getSqlExceededAvgList($timeAvgMicro, $data)
+    {
+        if (self::$avgCountList === null) {
+
+            self::$avgCountList = [];
+            foreach ($data as $index => $row) {
+                if ($row['time'] > $timeAvgMicro) {
+                    self::$avgCountList[] = $index;
+                }
+            }
+        }
+        return self::$avgCountList;
     }
 
     public static function getIsExceeded($time, $limit)
@@ -2088,8 +2158,19 @@ class QueryLog
         $level = self::getLevelByRate($rate);
         $levelText = self::getLevelText($level);
 
+        return [
+            'exceeded'=>$exceeded,
+            'rate'=>$rate,
+            'levelText'=>$levelText,
+        ];
+    }
+
+    public static function formatIsExceeded($isExceeded)
+    {
+        extract($isExceeded);
+
         if ($rate <= 0) {
-            return '没有超过限制，不需要优化';
+            return '没有超过限制';
         } else {
             return "超限 {$exceeded} 秒，超限 {$rate}%，{$levelText}";
         }
@@ -2141,7 +2222,9 @@ class QueryLog
     sql总数量：{sql_count_total} 个
     sql总时间：{sql_time_total} 秒 / {sql_time_total_micro} 毫秒
     sql平均时间：{sql_time_avg} 秒 / {sql_time_avg_micro} 毫秒
-    超过平均时间的sql数量：{sql_exceeded_avg_count} 个
+    超过平均时间的sql：{sql_exceeded_avg_count}
+    
+    sql超限时间是平均时间的 {sql_time_avg_with_time_total_exceeded} 倍
 
 
 EOF;
@@ -2155,7 +2238,7 @@ EOF;
     
     总时间：限制 {time_total_limit} 秒，实际 {time_total} 秒，{time_total_exceeded}
     sql总时间：没有sql查询
-    其它总时间：占所有总时间
+    其它总时间：等于总时间
 
 
 EOF;
