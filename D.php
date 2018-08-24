@@ -843,9 +843,10 @@ class D
     /**
      * End a profile. The name pp means 'endProfie' for convenience.
      * @param string $token
+     * @param bool $return
      * @throws Exception
      */
-    public static function pp($token='profile')
+    public static function pp($token='profile', $return=false)
     {
         if(isset(self::$_profile[$token])){
             $now = microtime(true);
@@ -854,7 +855,11 @@ class D
 
             // log cost for compare profile
             self::$_profile_cost[$token] = $cost;
-            self::log($cost);
+            if ($return) {
+                return $cost;
+            } else {
+                self::log($cost);
+            }
         }else{
             throw new Exception('Profile token ' . $token . ' is not found.');
         }
@@ -1656,6 +1661,7 @@ class D
      */
     public static function s()
     {
+        self::p('s_total_profile');
         DB::enableQueryLog();
     }
 
@@ -1665,50 +1671,33 @@ class D
      */
     public static function ss($asString=false)
     {
+        // time total
+        $timeTotal = self::pp('s_total_profile', true);
+
+        // query list
         $data = DB::getQueryLog();
 
-        $data = self::parseQueryLog($data);
+        if (count($data)) {
 
-        // 生成标识
-        $slow = 1000;
-        foreach ($data as &$row) {
-            unset($row['query'], $row['bindings']);
-            $row['sign'] = md5($row['replace']);
+            // parse query list
+            $data = QueryLog::parseQueryLog($data);
 
-            if ($row['time'] > $slow) {
-                $row['slow'] = '慢，超过 ' . $slow / 1000 . ' 秒';
-            }
+            // explain
+            QueryLog::explain($data);
+
+            // sign and repeat
+            QueryLog::signAndRepeat($data);
         }
 
-        // 标识列表
-        $signList = array_column($data, 'sign');
+        // stat the query list
+        $stat = QueryLog::stat($data, $timeTotal);
 
-        // 附加次数
-        foreach ($data as $index => &$row) {
+        // format and display stat info
+        self::$_message = '$stat';
+        self::log(QueryLog::formatStat($stat));
 
-            $repeatRow = [];
-
-            foreach ($signList as $key => $sign) {
-
-                // 跳过当前行
-                if ($index == $key) {
-                    continue;
-                }
-
-                // 记录重复行号
-                if (strcmp($sign, $row['sign']) === 0) {
-                    $repeatRow[] = $key;
-                }
-            }
-
-            // 显示重复行号
-            if (count($repeatRow)) {
-                $row['repeat'] = '和 ' . implode(', ', $repeatRow) . ' 行重复，一共重复 ' . count($repeatRow) . ' 次';
-            }
-
-            unset($row['sign']);
-        }
-
+        // display query list
+        self::$_message = '$query_list';
         self::log($data);
     }
 
@@ -1741,49 +1730,6 @@ class D
         }
 
         self::log($data);
-    }
-
-    private static function parseQueryLog($data)
-    {
-        // 记录laravel数据库sql时，sql只有占位符和绑定数据，不方便复制查询，这里查找并替换问号
-        foreach ($data as $index => $row) {
-
-            $query = $row['query'];
-
-            // 处理绑定关系
-            if (!empty($row['bindings'])) {
-                $bindings = $row['bindings'];
-
-                // 循环查找并替换
-                $start = 0; // 开始查找位置
-                $key = 0; // 绑定内容位置
-                while (($pos = strpos($query, '?', $start)) !== false) {
-
-                    // 绑定内容
-                    $value = $bindings[$key];
-
-                    // 绑定内容是字符串，加双引号
-                    if (is_string($value)) {
-                        $value = "'{$value}'";
-                    }
-
-                    // 替换问号出现的位置 - 截取问号前后部分，中间用值代替
-                    $query = substr($query, 0, $pos) . $value . substr($query, $pos + 1);
-
-                    // 查找下一个问号
-                    $start = $pos+1;
-
-                    // 绑定内容位置进一
-                    $key++;
-                }
-            }
-
-            $row = array_merge(['replace'=>$query], $row);
-
-            $data[$index] = $row;
-        }
-
-        return $data;
     }
 
     public static function readpath($path, $exclude=[])
@@ -1971,6 +1917,262 @@ class D
             return $string;
         } else {
             echo $string;
+        }
+    }
+}
+
+class QueryLog
+{
+    /**
+     * Optimize level.
+     */
+    const OPTIMIZE_LEVEL_URGENCY = 1;
+    const OPTIMIZE_LEVEL_SHOULD = 2;
+    const OPTIMIZE_LEVEL_SUGGEST = 3;
+    const OPTIMIZE_LEVEL_NEEDLESS = 4;
+
+    /**
+     * Time limit.
+     */
+    const TIME_TOTAL_LIMIT = 3000;
+    const SQL_TIME_TOTAL_LIMIT = 1000;
+
+    public static function parseQueryLog($data)
+    {
+        // 记录laravel数据库sql时，sql只有占位符和绑定数据，不方便复制查询，这里查找并替换问号
+        foreach ($data as $index => $row) {
+
+            $query = $row['query'];
+
+            // 处理绑定关系
+            if (!empty($row['bindings'])) {
+                $bindings = $row['bindings'];
+
+                // 循环查找并替换
+                $start = 0; // 开始查找位置
+                $key = 0; // 绑定内容位置
+                while (($pos = strpos($query, '?', $start)) !== false) {
+
+                    // 绑定内容
+                    $value = $bindings[$key];
+
+                    // 绑定内容是字符串，加双引号
+                    if (is_string($value)) {
+                        $value = "'{$value}'";
+                    }
+
+                    // 替换问号出现的位置 - 截取问号前后部分，中间用值代替
+                    $query = substr($query, 0, $pos) . $value . substr($query, $pos + 1);
+
+                    // 查找下一个问号
+                    $start = $pos+1;
+
+                    // 绑定内容位置进一
+                    $key++;
+                }
+            }
+
+            $row = array_merge(['replace'=>$query], $row);
+
+            $data[$index] = $row;
+        }
+
+        return $data;
+    }
+
+    public static function explain(&$data)
+    {
+        foreach ($data as &$row) {
+
+            // unset the query and bindings field
+            unset($row['query'], $row['bindings']);
+
+            // create sql sign
+            $row['sign'] = md5($row['replace']);
+
+            // is the sql slow?
+            if ($row['time'] > self::SQL_TIME_TOTAL_LIMIT) {
+                $row['slow'] = '慢，超过 ' . self::SQL_TIME_TOTAL_LIMIT / 1000 . ' 秒';
+            }
+
+            // time as second
+            $row['time_second'] = $row['time'] / 1000;
+
+            // explain the select sql
+            $row['explain'] = [];
+            $explainList = \DB::select('explain '.$row['replace']);
+            foreach ($explainList as $explain) {
+                $explainString = '';
+                foreach ($explain as $attribute => $value) {
+                    $explainString .= $attribute . '=' . $value . '  ';
+                }
+                $row['explain'][] = $explainString;
+            }
+        }
+    }
+
+    public static function signAndRepeat(&$data)
+    {
+        // 标识列表
+        $signList = array_column($data, 'sign');
+
+        // 附加次数
+        foreach ($data as $index => &$row) {
+
+            $repeatRow = [];
+
+            foreach ($signList as $key => $sign) {
+
+                // 跳过当前行
+                if ($index == $key) {
+                    continue;
+                }
+
+                // 记录重复行号
+                if ($sign == $row['sign']) {
+                    $repeatRow[] = $key;
+                }
+            }
+
+            // 显示重复行号
+            if (count($repeatRow)) {
+                $row['repeat'] = '和 ' . implode(', ', $repeatRow) . ' 行重复，一共重复 ' . count($repeatRow) . ' 次';
+            }
+
+            unset($row['sign']);
+        }
+    }
+
+    public static function stat($data, $timeTotal)
+    {
+        $stat = [];
+
+        // total time stat
+        $stat['time_total'] = $timeTotal;
+        $stat['time_total_limit'] = self::TIME_TOTAL_LIMIT / 1000;
+        $stat['time_total_exceeded'] = self::getIsExceeded($stat['time_total'], $stat['time_total_limit']);
+
+        // sql count
+        $stat['sql_count_total'] = count($data);
+
+        if ($stat['sql_count_total']) {
+
+            // sql time stat
+            $stat['sql_time_total_micro'] = array_sum(array_column($data, 'time'));
+            $stat['sql_time_total'] = $stat['sql_time_total_micro'] / 1000;
+            $stat['sql_time_total_limit'] = self::SQL_TIME_TOTAL_LIMIT / 1000;
+            $stat['sql_time_total_exceeded'] = self::getIsExceeded($stat['sql_time_total'], $stat['sql_time_total_limit']);
+            $stat['sql_time_percent_of_total'] = self::getRate($timeTotal, $stat['sql_time_total']);
+
+            // else time stat
+            $stat['else_time_total'] = $timeTotal - $stat['sql_time_total'];
+            $stat['else_time_total_limit'] = $stat['time_total_limit'] - $stat['sql_time_total_limit'];
+            $stat['else_time_total_exceeded'] = self::getIsExceeded($stat['else_time_total'], $stat['else_time_total_limit']);
+            $stat['else_time_percent_of_total'] = self::getRate($timeTotal, $stat['else_time_total']);
+
+            // sql time avg
+            $stat['sql_time_avg'] = $stat['sql_time_total'] / $stat['sql_count_total'];
+            $stat['sql_time_avg_micro'] = $stat['sql_time_total_micro'] / $stat['sql_count_total'];
+            $stat['sql_exceeded_avg_count'] = 0;
+
+        }
+
+        return $stat;
+    }
+
+    public static function getIsExceeded($time, $limit)
+    {
+        $exceeded = $time - $limit;
+
+        $rate = self::getRate($time, $exceeded);
+        $level = self::getLevelByRate($rate);
+        $levelText = self::getLevelText($level);
+
+        if ($rate <= 0) {
+            return '没有超过限制，不需要优化';
+        } else {
+            return "超限 {$exceeded} 秒，超限 {$rate}%，{$levelText}";
+        }
+    }
+
+    public static function getRate($total, $part)
+    {
+        return sprintf('%.2f', $part / $total) * 100;
+    }
+
+    public static function getLevelByRate($rate)
+    {
+        if ($rate <= 0) {
+            return self::OPTIMIZE_LEVEL_NEEDLESS;
+        } elseif ($rate <= 25) {
+            return self::OPTIMIZE_LEVEL_SUGGEST;
+        } elseif ($rate <= 75) {
+            return self::OPTIMIZE_LEVEL_SHOULD;
+        } else {
+            return self::OPTIMIZE_LEVEL_URGENCY;
+        }
+    }
+
+    public static function getLevelText($level)
+    {
+        $data = [
+            self::OPTIMIZE_LEVEL_URGENCY => '紧急优化',
+            self::OPTIMIZE_LEVEL_SHOULD => '应该优化',
+            self::OPTIMIZE_LEVEL_SUGGEST => '建议优化',
+            self::OPTIMIZE_LEVEL_NEEDLESS => '不需要优化',
+        ];
+
+        return $data[$level] ?? 'unknown';
+    }
+
+    public static function formatStat($stat)
+    {
+        if ($stat['sql_count_total']) {
+
+            $info = <<<EOF
+
+
+性能统计说明：
+    
+    总时间：限制 {time_total_limit} 秒，实际 {time_total} 秒，{time_total_exceeded}
+    sql总时间：限制 {sql_time_total_limit} 秒，实际 {sql_time_total} 秒，占总时间 {sql_time_percent_of_total}%，{sql_time_total_exceeded}
+    其它总时间：限制 {else_time_total_limit} 秒，实际 {else_time_total} 秒，占总时间 {else_time_percent_of_total}%，{else_time_total_exceeded}
+    
+    sql总数量：{sql_count_total} 个
+    sql总时间：{sql_time_total} 秒 / {sql_time_total_micro} 毫秒
+    sql平均时间：{sql_time_avg} 秒 / {sql_time_avg_micro} 毫秒
+    超过平均时间的sql数量：{sql_exceeded_avg_count} 个
+
+
+EOF;
+
+        } else {
+
+        $info = <<<EOF
+
+
+性能统计说明：
+    
+    总时间：限制 {time_total_limit} 秒，实际 {time_total} 秒，{time_total_exceeded}
+    sql总时间：没有sql查询
+    其它总时间：占所有总时间
+
+
+EOF;
+
+        }
+
+        self::replaceKey($stat);
+        return strtr($info, $stat);
+    }
+
+    public static function replaceKey(&$data, $prefix='{', $postfix='}')
+    {
+        foreach ($data as $key => $value) {
+            $newKey = $prefix . $key . $postfix;
+            $data[$newKey] = $value;
+
+            unset($data[$key]);
         }
     }
 }
