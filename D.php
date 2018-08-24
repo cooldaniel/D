@@ -858,6 +858,8 @@ class D
             if ($return) {
                 return $cost;
             } else {
+                self::$_message = 'profile::' . $token;
+                $cost = sprintf('%.9f', $cost);
                 self::log($cost);
             }
         }else{
@@ -1698,13 +1700,8 @@ class D
             QueryLog::markAvgTime($data, $stat);
         }
 
-        // format and display stat info
         self::$_message = '$stat';
-        self::log(QueryLog::formatStat($stat));
-
-        // display query list
-        self::$_message = '$query_list';
-        self::log($data);
+        self::log(QueryLog::formatStat($stat) . QueryLog::formatDataToDisplay($data));
     }
 
     public static function sss()
@@ -2012,7 +2009,7 @@ class QueryLog
             foreach ($explainList as $explain) {
                 $explainString = '';
                 foreach ($explain as $attribute => $value) {
-                    $explainString .= $attribute . '=' . $value . '  ';
+                    $explainString .= strtoupper($attribute) . '=' . $value . '  ';
                 }
                 $row['explain'][] = $explainString;
             }
@@ -2213,7 +2210,7 @@ class QueryLog
             $info = <<<EOF
 
 
-性能统计说明：
+性能统计
     
     总时间：限制 {time_total_limit} 秒，实际 {time_total} 秒，{time_total_exceeded}
     sql总时间：限制 {sql_time_total_limit} 秒，实际 {sql_time_total} 秒，占总时间 {sql_time_percent_of_total}%，{sql_time_total_exceeded}
@@ -2234,7 +2231,7 @@ EOF;
         $info = <<<EOF
 
 
-性能统计说明：
+性能统计
     
     总时间：限制 {time_total_limit} 秒，实际 {time_total} 秒，{time_total_exceeded}
     sql总时间：没有sql查询
@@ -2257,5 +2254,64 @@ EOF;
 
             unset($data[$key]);
         }
+    }
+
+    public static function breakWithLength($string, $len)
+    {
+//        $stringLen = strlen($string);
+//
+//        if ($len >= $stringLen) {
+//            return $string;
+//        }
+//
+//        $times = $stringLen / $len;
+//
+//        while(true) {
+//
+//
+//
+//        }
+
+    }
+
+    public static function formatDataToDisplay($data)
+    {
+        $rowInfo = <<<EOD
+
+[{index}]
+    {replace}
+    
+    {explain_list}
+    
+    {time_elapse_order}{exceeded_avg_time}耗时：{time_second} 秒 / {time} 毫秒{slow}
+    
+EOD;
+
+        $res = "\nsql查询列表\n";
+
+        $allSql = '';
+
+        foreach ($data as $index => $row) {
+
+            $res .= strtr($rowInfo, [
+                '{index}'=>$index,
+                '{replace}'=>$row['replace'],
+                '{explain_list}'=>implode("\n    ", $row['explain']),
+                '{time}'=>$row['time'],
+                '{time_second}'=>$row['time_second'],
+                '{exceeded_avg_time}'=>isset($row['exceeded_avg_time']) ? $row['exceeded_avg_time'] . "\n    " : '',
+                '{time_elapse_order}'=>isset($row['time_elapse_order']) ? $row['time_elapse_order'] . "\n    " : '',
+                '{slow}'=>isset($row['slow']) ? "\n    " . $row['slow'] : '',
+            ]);
+
+            $allSql .= $row['replace'] . ";\n";
+        }
+
+        $res .= "\n";
+        $res .= $allSql;
+
+        $res .= "\n";
+
+        return $res;
     }
 }
