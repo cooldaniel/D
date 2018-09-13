@@ -1865,7 +1865,9 @@ class D
             self::log(self::$_shutdownLog);
         }
 
-        \D::ss();
+        if (function_exists('DB')) {
+            \D::ss();
+        }
     }
 
     public static function shutdownLog($data)
