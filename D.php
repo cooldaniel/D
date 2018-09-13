@@ -1667,6 +1667,13 @@ class D
         DB::enableQueryLog();
     }
 
+    public static function sd()
+    {
+        $data = DB::getQueryLog();
+        self::$_message = 'query log';
+        self::loge($data);
+    }
+
     /**
      * End the laravel database sql query log. The name ss means 'endSqlLog' for convenience.
      * @param bool $asString Join the sql as one string when true.
@@ -1922,6 +1929,12 @@ class D
             echo $string;
         }
     }
+
+    public static function fpl()
+    {
+        self::$_message = 'footprint';
+        self::log('~~~ footprint - '.rand().' ~~~');
+    }
 }
 
 class QueryLog
@@ -2041,7 +2054,7 @@ class QueryLog
 
             // 显示重复行号
             if (count($repeatRow)) {
-                $row['repeat'] = '和 ' . implode(', ', $repeatRow) . ' 行重复，一共重复 ' . count($repeatRow) . ' 次';
+                $row['repeat'] = '重复：和第 ' . implode(', ', $repeatRow) . ' 行重复，一共重复 ' . count($repeatRow) . ' 次';
             }
 
             unset($row['sign']);
@@ -2101,9 +2114,27 @@ class QueryLog
                 $stat['sql_time_avg_with_time_total_exceeded'] = 0;
             }
 
+            // sql repeat list
+            $sqlRepeatList = self::getSqlRepeatList($data);
+            $sqlRepeatCount = count($sqlRepeatList) / 2;
+            $stat['sql_repeat_list'] = "，{$sqlRepeatCount} 个重复";
+            if ($sqlRepeatCount) {
+                $stat['sql_repeat_list'] .= "，分别是 " . implode(', ', $sqlRepeatList);
+            }
         }
 
         return $stat;
+    }
+
+    public static function getSqlRepeatList($data)
+    {
+        $repeatList = [];
+        foreach ($data as $index => $item) {
+            if (isset($item['repeat'])) {
+                $repeatList[] = $index;
+            }
+        }
+        return $repeatList;
     }
 
     public static function markAvgTime(&$data, $stat)
@@ -2216,7 +2247,7 @@ class QueryLog
     sql总时间：限制 {sql_time_total_limit} 秒，实际 {sql_time_total} 秒，占总时间 {sql_time_percent_of_total}%，{sql_time_total_exceeded}
     其它总时间：限制 {else_time_total_limit} 秒，实际 {else_time_total} 秒，占总时间 {else_time_percent_of_total}%，{else_time_total_exceeded}
     
-    sql总数量：{sql_count_total} 个
+    sql总数量：{sql_count_total} 个{sql_repeat_list}
     sql总时间：{sql_time_total} 秒 / {sql_time_total_micro} 毫秒
     sql平均时间：{sql_time_avg} 秒 / {sql_time_avg_micro} 毫秒
     超过平均时间的sql：{sql_exceeded_avg_count}
@@ -2283,7 +2314,7 @@ EOF;
     
     {explain_list}
     
-    {time_elapse_order}{exceeded_avg_time}耗时：{time_second} 秒 / {time} 毫秒{slow}
+    {time_elapse_order}{exceeded_avg_time}耗时：{time_second} 秒 / {time} 毫秒{slow}{repeat}
     
 EOD;
 
@@ -2302,6 +2333,7 @@ EOD;
                 '{exceeded_avg_time}'=>isset($row['exceeded_avg_time']) ? $row['exceeded_avg_time'] . "\n    " : '',
                 '{time_elapse_order}'=>isset($row['time_elapse_order']) ? $row['time_elapse_order'] . "\n    " : '',
                 '{slow}'=>isset($row['slow']) ? "\n    " . $row['slow'] : '',
+                '{repeat}'=>isset($row['repeat']) ? "\n    " . $row['repeat'] : '',
             ]);
 
             $allSql .= $row['replace'] . ";\n";
