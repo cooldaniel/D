@@ -1708,7 +1708,11 @@ class D
         }
 
         self::$_message = '$stat';
-        self::log(QueryLog::formatStat($stat) . QueryLog::formatDataToDisplay($data));
+        $content = '';
+        $content .= "\n\n" . $_SERVER['SERVER_NAME'] . $_SERVER['REQUEST_URI']; // the current request url
+        $content .= QueryLog::formatStat($stat); // stat info
+        $content .= QueryLog::formatDataToDisplay($data); // sql list
+        self::log($content);
     }
 
     public static function sss()
