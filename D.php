@@ -604,30 +604,14 @@ class D
 	 */
 	private static function prefixMessage($content, $highlight=false)
 	{
-        $d = debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS | !DEBUG_BACKTRACE_PROVIDE_OBJECT);
+        // 调用堆栈
+        $d = self::getDebugBacktrace();
+
+        // 调用位置行
+        $v = self::getDebugBacktraceRow($d);
 
         // 调用位置
-        $v = array();
-        foreach($d as $row)
-        {
-            if(isset($row['file']) && (strpos($row['file'], 'D.php') === false))
-            {
-                $v = $row;
-                break;
-            }
-        }
-
-        if ($v !== array())
-        {
-            $position = self::fetchPosition($v);
-        }
-        else
-        {
-            $position = '';
-
-        }
-
-        //var_dump($d);
+        $position = self::getPositionFromDebugBacktraceRow($v);
 
         if (self::$_message != '')
         {
@@ -636,7 +620,7 @@ class D
         }
         else
         {
-            if ($v !== array())
+            if ($v !== [])
             {
                 $message = self::namesMap($v['function']);
                 if ($message == '')
@@ -656,6 +640,55 @@ class D
 		
 		return $highlight ? '<span class="toggle">' . $position . '#' . $message . '</span> '. $content : $position . '#' . $message . ' ' . $content;
 	}
+
+	private static function getPositionFromDebugBacktrace()
+    {
+//        return 'dd';
+
+        // 调用堆栈
+        $d = self::getDebugBacktrace();
+
+        // 调用位置行
+        $v = self::getDebugBacktraceRow($d);
+
+        // 调用位置
+        $position = self::getPositionFromDebugBacktraceRow($v);
+
+        return $position;
+    }
+
+	private static function getDebugBacktrace()
+    {
+        return debug_backtrace(DEBUG_BACKTRACE_IGNORE_ARGS | !DEBUG_BACKTRACE_PROVIDE_OBJECT);
+    }
+
+    private static function getDebugBacktraceRow($d)
+    {
+        $v = array();
+        foreach($d as $row)
+        {
+            if(isset($row['file']) && (strpos($row['file'], 'D.php') === false))
+            {
+                $v = $row;
+                break;
+            }
+        }
+        return $v;
+    }
+
+    private static function getPositionFromDebugBacktraceRow($v)
+    {
+        if ($v !== array())
+        {
+            $position = self::fetchPosition($v);
+        }
+        else
+        {
+            $position = '';
+
+        }
+        return $position;
+    }
 
 	private static function fetchPosition(&$fileinfo)
     {
@@ -768,9 +801,10 @@ class D
 		if (!self::$_closed)
 		{
             if (func_num_args()){
-                self::pde(func_num_args());
+                self::pde(func_get_args());
             }else{
-			    exit('<pre> !!! breakpoint !!! </pre>');
+                $position = self::getPositionFromDebugBacktrace();
+			    exit('<pre> '.$position.'# !!! breakpoint !!! </pre>');
             }
 		}
 	}
@@ -779,7 +813,8 @@ class D
 	{
 		if (!self::$_closed)
 		{
-			echo '<pre> ~~~ footprint - '.rand().' ~~~ </pre>';
+            $position = self::getPositionFromDebugBacktrace();
+			echo '<pre> '.$position.'# ~~~ footprint - '.rand().' ~~~ </pre>';
 		}
 	}
 
@@ -1936,6 +1971,13 @@ class D
     {
         self::$_message = 'footprint';
         self::log('~~~ footprint - '.rand().' ~~~');
+    }
+
+    public static function baseinfo()
+    {
+        $constList = get_defined_constants();
+        ksort($constList);
+        self::log($constList);
     }
 }
 
