@@ -105,6 +105,8 @@ class D
     private static $_first_log = false;
     private static $_no_clean = false;
     private static $_shutdownLog = [];
+    private static $_line_chars = ['-', '=', '*', '!', '#', '@', '$', '%', '^', '&', '<', '>'];
+    private static $_line_char_index = 0;
 
     public static function pdsException()
     {
@@ -457,12 +459,12 @@ class D
         $file = self::getLogPath() . '/DumperLogFile.ig.txt';
         if (self::$_clear)
         {
-            file_put_contents($file, $content);
+            file_put_contents($file, $content, LOCK_EX);
             self::$_clear = false;
         }
         else
         {
-            file_put_contents($file, $content, FILE_APPEND);
+            file_put_contents($file, $content, FILE_APPEND | LOCK_EX);
         }
     }
 
@@ -893,9 +895,12 @@ class D
             if ($return) {
                 return $cost;
             } else {
+                // set the message manually
                 self::$_message = 'profile::' . $token;
                 $cost = sprintf('%.9f', $cost);
                 self::log($cost);
+                // should clean the message manually
+                self::$_message = '';
             }
         }else{
             throw new Exception('Profile token ' . $token . ' is not found.');
@@ -1466,6 +1471,17 @@ class D
         exit;
     }
 
+    public static function jsontest()
+    {
+        self::json(array('D::jsontest()'=>range(1, 10)));
+    }
+
+    public static function jsonteste()
+    {
+        self::jsontest();
+        exit;
+    }
+
     public static function md5($data)
     {
         self::pd(md5(json_encode($data)));
@@ -1618,9 +1634,28 @@ class D
         $log ? self::log($res) : self::pd($res);
     }
 
-    public static function line($log=false)
+    public static function line2($log=false)
     {
-        $res = str_repeat("=", 100);
+        $res = str_repeat(self::$_line_chars[self::$_line_char_index], 100);
+
+        self::$_line_char_index++;
+        if (self::$_line_char_index == count(self::$_line_chars)) {
+            self::$_line_char_index = 0;
+        }
+
+        if ($log) {
+            self::log($res);
+        } else {
+            echo "<div>$res</div>";
+        }
+    }
+
+    public static function line($log=false, $title='')
+    {
+        if ($title !== '') {
+            $title = ' ' . $title . ' ';
+        }
+        $res = str_repeat('-', 50) . $title . str_repeat('-', 50);
         if ($log) {
             self::log($res);
         } else {
@@ -1861,6 +1896,11 @@ class D
         }
 
         if (function_exists('DB')) {
+
+            if(!isset(self::$_profile['s_total_profile'])){
+                return true;
+            }
+
             \D::ss();
         }
     }
