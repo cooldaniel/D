@@ -14,6 +14,7 @@ function autoloadDumperComponentD()
 	$basepath = dirname(__FILE__);
 	require_once $basepath . '/D.php';
 	require_once $basepath . '/CVarDumper.php';
+	require_once $basepath . '/SqlFormatter.php';
 }
 
 spl_autoload_register('autoloadDumperComponentD');

@@ -89,6 +89,9 @@ class D
 	const GBK = 2;
     const LINE = '------------------------------------------------------------------';
 
+    const SORT_ASC = 1;
+    const SORT_DESC = 2;
+
 	private static $_logPath;
 	private static $_iconv = null;
 	private static $_message = '';
@@ -108,6 +111,12 @@ class D
     private static $_line_chars = ['-', '=', '*', '!', '#', '@', '$', '%', '^', '&', '<', '>'];
     private static $_line_char_index = 0;
 
+    /**
+     * 如果打印的内容只需要原格式输出，可以跳过pdo处理，例如记录已经格式化好的sql的时候.
+     * @var bool
+     */
+    private static $_skip_pdo = false;
+
     public static function pdsException()
     {
         self::$_pds_exception = true;
@@ -119,6 +128,14 @@ class D
     public static function noclean()
     {
         self::$_no_clean = true;
+    }
+
+    /**
+     * 恢复"第一次记录时清空之前的记录"的逻辑
+     */
+    public static function clean()
+    {
+        self::$_no_clean = false;
     }
 
 	/**
@@ -187,6 +204,63 @@ class D
         }
         $text = ($charset == self::UTF8) ? 'UTF-8' : 'GB2312';
         header('Content-Type:text/html; charset=' . $text);
+    }
+
+    /**
+     * 抛出一个测试异常.
+     * @throws Exception
+     */
+    public static function throw()
+    {
+        throw new Exception('A test exception throwed by D component.');
+    }
+
+    /**
+     * Sort the array.
+     * @param $array
+     * @param $sort
+     * @param $sortByKey
+     * $param $sortByRecurse
+     */
+    public static function sort(&$array, $sort, $sortByKey, $sortByRecurse)
+    {
+        // Sort by key or value
+        if ($sortByKey)
+        {
+            if ($sort == self::SORT_ASC)
+            {
+                ksort($array);
+            }
+            elseif ($sort == self::SORT_DESC)
+            {
+                krsort($array);
+            }
+        }
+        else
+        {
+            if ($sort == self::SORT_ASC)
+            {
+                sort($array);
+            }
+            elseif ($sort == self::SORT_DESC)
+            {
+                rsort($array);
+            }
+        }
+
+        // Sort by recurse
+        if ($sortByRecurse)
+        {
+            foreach ($array as &$item)
+            {
+                if (!is_array($item) || count($item) == 0)
+                {
+                    continue;
+                }
+
+                self::sort($item, $sort, $sortByKey, $sortByRecurse);
+            }
+        }
     }
 	
 	/**
@@ -434,7 +508,7 @@ class D
 				self::$_arg_pos = 0;
 				foreach ($args as $arg)
 				{
-					$content = self::pdo($arg);
+				    $content = self::pdo($arg);
 				
 					$content = self::prefixMessage($content);
 					$content = self::msecDate(null, true) . ' ' . $content;
@@ -509,6 +583,12 @@ class D
 	 */
 	private static function pdo($arg)
 	{
+	    // 如果跳过格式化处理，就直接返回原变量内容
+	    if (self::$_skip_pdo && is_string($arg))
+        {
+            return $arg;
+        }
+
 		if (self::$_asa)
 		{
 			return CVarDumper::dumpAsString($arg) . "\n";
@@ -723,6 +803,10 @@ class D
 			$text = '';
 			$lines = file($file);
 			$line_num = $line_num - 1;
+			if ($line_num < 0)
+            {
+                $line_num = 0;
+            }
 			while (strpos(($line = $lines[$line_num]), 'D::') === false)
 			{
 				$text = $line . $text;
@@ -820,6 +904,15 @@ class D
 		}
 	}
 
+	public static function done()
+    {
+        if (!self::$_closed)
+		{
+            $position = self::getPositionFromDebugBacktrace();
+			echo '<pre> '.$position.'# ~~~ done - '.rand().' ~~~ </pre>';
+		}
+    }
+
 	public static function blank($num=3, $html=true)
     {
         if (!self::$_closed)
@@ -868,8 +961,12 @@ class D
      * @param string $token
      * @throws Exception
      */
-	public static function p($token='profile')
+	public static function profile($token=null)
     {
+        if ($token === null) {
+            $token = 'profile';
+        }
+
         if(!isset(self::$_profile[$token])){
             self::$_profile[$token] = microtime(true);
         }else{
@@ -878,13 +975,17 @@ class D
     }
 
     /**
-     * End a profile. The name pp means 'endProfie' for convenience.
+     * End a profile.
      * @param string $token
      * @param bool $return
      * @throws Exception
      */
-    public static function pp($token='profile', $return=false)
+    public static function profilee($token=null, $return=false)
     {
+        if ($token === null) {
+            $token = 'profile';
+        }
+
         if(isset(self::$_profile[$token])){
             $now = microtime(true);
             $last = self::$_profile[$token];
@@ -908,12 +1009,12 @@ class D
     }
 
     /**
-     * Compare two profile. The name p means 'compProfile' for convenience.
+     * Compare two profile.
      * @param $token_new
      * @param $token_old
      * @throws Exception
      */
-    public static function pc($token_new, $token_old)
+    public static function profilec($token_new, $token_old)
     {
         if (!isset(self::$_profile_cost[$token_old])){
             throw new Exception('Profile token ' . $token_old . ' is not found.');
@@ -991,29 +1092,29 @@ class D
 		$log ? self::log($res) : self::pd($res);
 	}
 	
-	public static function post(){self::pd($_POST);}
-	public static function poste(){self::pde($_POST);}
+	public static function post($slight=false){$slight ? self::pds($_POST) : self::pd($_POST);}
+	public static function poste($slight=false){$slight ? self::pdse($_POST) : self::pde($_POST);}
 	
-	public static function get(){self::pd($_GET);}
-	public static function gete(){self::pde($_GET);}
+	public static function get($slight=false){$slight ? self::pds($_GET) : self::pd($_GET);}
+	public static function gete($slight=false){$slight ? self::pdse($_GET) : self::pde($_GET);}
 	
-	public static function request(){self::pd($_REQUEST);}
-	public static function requeste(){self::pde($_REQUEST);}
+	public static function request($slight=false){$slight ? self::pds($_REQUEST) : self::pd($_REQUEST);}
+	public static function requeste($slight=false){$slight ? self::pdse($_REQUEST) : self::pde($_REQUEST);}
 	
-	public static function session(){self::pd($_SESSION);}
-	public static function sessione(){self::pde($_SESSION);}
+	public static function session($slight=false){$slight ? self::pds($_SESSION) : self::pd($_SESSION);}
+	public static function sessione($slight=false){$slight ? self::pdse($_SESSION) : self::pde($_SESSION);}
 	
-	public static function cookie(){self::pd($_COOKIE);}
-	public static function cookiee(){self::pde($_COOKIE);}
+	public static function cookie($slight=false){$slight ? self::pds($_COOKIE) : self::pd($_COOKIE);}
+	public static function cookiee($slight=false){$slight ? self::pdse($_COOKIE) : self::pde($_COOKIE);}
 	
-	public static function files(){self::pd($_FILES);}
-	public static function filese(){self::pde($_FILES);}
+	public static function files($slight=false){$slight ? self::pds($_FILES) : self::pd($_FILES);}
+	public static function filese($slight=false){$slight ? self::pdse($_FILES) : self::pde($_FILES);}
 	
-	public static function server(){self::pd($_SERVER);}
-	public static function servere(){self::pde($_SERVER);}
+	public static function server($slight=false){$slight ? self::pds($_SERVER) : self::pd($_SERVER);}
+	public static function servere($slight=false){$slight ? self::pdse($_SERVER) : self::pde($_SERVER);}
 	
-	public static function globals(){self::pd($GLOBALS);}
-	public static function globalse(){self::pde($GLOBALS);}
+	public static function globals($slight=false){$slight ? self::pds($GLOBALS) : self::pd($GLOBALS);}
+	public static function globalse($slight=false){$slight ? self::pdse($GLOBALS) : self::pde($GLOBALS);}
 
     public static function iget($name, $return=false)
     {
@@ -1493,7 +1594,7 @@ class D
         exit;
     }
 
-    public static function met($sec=1000000)
+    public static function met($sec=0)
     {
         ini_set('max_execution_time', $sec);
     }
@@ -1507,6 +1608,90 @@ class D
     {
         $hd = fopen(self::getLogPath().'/curllog_'.date('YmdHis').'_'.rand().'.log', 'w');
         curl_setopt($ch, CURLOPT_STDERR , $hd);
+    }
+
+    public static function curlArray($url, $params = [], $post=false)
+    {
+        return self::curl($url, $params, $post, true);
+    }
+
+    /**
+     * @param $url 请求网址
+     * @param array $params 请求参数
+     * @param bool $post 请求方式
+     * @param bool $https https协议
+     * @return bool|mixed
+     */
+    public static function curl($url, $params = [], $post=false, $returnArray=false, $curlOptions=[], $https=false)
+    {
+        $ch = curl_init();
+
+        curl_setopt($ch, CURLOPT_HTTP_VERSION, CURL_HTTP_VERSION_1_1);
+        curl_setopt($ch, CURLOPT_USERAGENT, 'Mozilla/5.0 (Windows NT 10.0; WOW64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/41.0.2272.118 Safari/537.36');
+        curl_setopt($ch, CURLOPT_CONNECTTIMEOUT, 30);
+        curl_setopt($ch, CURLOPT_TIMEOUT, 30);
+        curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
+
+        if ($https) {
+            curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, FALSE); // 对认证证书来源的检查
+            curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, FALSE); // 从证书中检查SSL加密算法是否存在
+        }
+
+        if (!empty($curlOptions) && is_array($curlOptions)) {
+            foreach ($curlOptions as $option => $value) {
+                curl_setopt($ch, $option, $value);
+            }
+        }
+
+        if ($post) {
+            curl_setopt($ch, CURLOPT_POST, true);
+            curl_setopt($ch, CURLOPT_POSTFIELDS, $params);
+            curl_setopt($ch, CURLOPT_URL, $url);
+        } else {
+            if (!empty($params) && is_array($params)) {
+                curl_setopt($ch, CURLOPT_URL, $url . '?' . http_build_query($params));
+            } else {
+                curl_setopt($ch, CURLOPT_URL, $url);
+            }
+        }
+
+        $response = curl_exec($ch);
+
+        if ($response === false) {
+
+            self::$_message = 'D::curl() curl error';
+            D::pd(array(
+                'curl_errno'=>curl_errno($ch),
+                'curl_error'=>curl_error($ch),
+                'http_code'=>curl_getinfo($ch, CURLINFO_HTTP_CODE),
+                'http_info'=>curl_getinfo($ch),
+            ));
+            self::$_message = '';
+
+            curl_close($ch);
+
+            return false;
+        }
+
+        curl_close($ch);
+
+        if ($returnArray) {
+            $res = @json_decode($response, true);
+            if (!$res) {
+                self::$_message = 'D::curl() json error';
+                D::pd(array(
+                    'json_last_error'=>json_last_error(),
+                    'json_last_error_msg'=>json_last_error_msg(),
+                    'response'=>substr($response, 1, 2048),
+                ));
+                self::$_message = '';
+
+            } else {
+                return $res;
+            }
+        } else {
+            return $response;
+        }
     }
 
     // 转换数组到postman格式
@@ -1865,7 +2050,7 @@ class D
     {
         $html = '<div><ul>';
         foreach ($data as $row) {
-            $html .= "<li><a href='./{$row['url']}' target='_blank'>{$row['text']}</a></li>";
+            $html .= "<li><a href='{$row['url']}' target='_blank'>{$row['text']}</a></li>";
         }
         $html .= '</ul></div>';
 
@@ -2022,6 +2207,87 @@ class D
         $constList = get_defined_constants();
         ksort($constList);
         self::log($constList);
+    }
+
+    public static function formatSql($sql, $highlight=false)
+    {
+        return "\n".SqlFormatter::format($sql, $highlight)."\n";
+    }
+
+    public static function pdSql($sql, $slight=false)
+    {
+        self::$_skip_pdo = true;
+        $slight ? self::pds(self::formatSql($sql, false)) : self::pd(self::formatSql($sql));
+        self::$_skip_pdo = false;
+    }
+
+    public static function pdeSql($sql, $slight=false)
+    {
+        self::$_skip_pdo = true;
+        $slight ? self::pdse(self::formatSql($sql, false)) : self::pde(self::formatSql($sql));
+        self::$_skip_pdo = false;
+    }
+
+    public static function logSql($sql)
+    {
+        self::$_skip_pdo = true;
+        self::log(self::formatSql($sql, false));
+        self::$_skip_pdo = false;
+    }
+
+    public static function logeSql($sql)
+    {
+        self::$_skip_pdo = true;
+        self::loge(self::formatSql($sql, false));
+        self::$_skip_pdo = false;
+    }
+
+    public static function logcSql($sql)
+    {
+        self::$_skip_pdo = true;
+        self::logc(self::formatSql($sql, false));
+        self::$_skip_pdo = false;
+    }
+
+    public static function logceSql($sql)
+    {
+        self::$_skip_pdo = true;
+        self::logce(self::formatSql($sql, false));
+        self::$_skip_pdo = false;
+    }
+
+    public static function dd($string)
+    {
+        $string = str_replace('\"', '', $string);
+        $string = str_replace('\\n', '', $string);
+
+        $string = str_replace('\t', '', $string);
+//        $string = str_replace('\"', '"', $string);
+        $string = str_replace("\\", '', $string);
+
+        if (isset($_GET['dd_ignore']))
+        {
+            return $string;
+        }
+
+        $string = @json_decode($string, true);
+
+        if (json_last_error() == JSON_ERROR_NONE)
+        {
+            $string = json_encode($string, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
+            $string = json_decode($string, true);
+
+            $string = substr($string['errorMess'], 21, strlen($string['errorMess']) - 22);
+
+            $string = str_replace('<div style=border:1px solid #990000;padding-left:20px;margin:0 0 10px 0;>', '', $string);
+            $string = str_replace('</div>', '', $string);
+            $string = str_replace('<p style=margin-left:10px>', "\n", $string);
+            $string = str_replace('<br />', "\n", $string);
+            $string = str_replace('</p>', "\n", $string);
+//            $string = preg_replace('<p>', "\n", $string);
+        }
+
+        return $string;
     }
 }
 
