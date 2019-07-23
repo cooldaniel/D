@@ -210,9 +210,14 @@ class D
      * 抛出一个测试异常.
      * @throws Exception
      */
-    public static function throw()
+    public static function throw($code=500)
     {
-        throw new Exception('A test exception throwed by D component.');
+        if ($code instanceof Exception)
+        {
+            throw $code;
+        }
+
+        throw new Exception('A test exception throwed by D component.', $code);
     }
 
     /**
@@ -222,7 +227,7 @@ class D
      * @param $sortByKey
      * $param $sortByRecurse
      */
-    public static function sort(&$array, $sort, $sortByKey, $sortByRecurse)
+    public static function sort(&$array, $sort=self::SORT_ASC, $sortByKey=true, $sortByRecurse=true)
     {
         // Sort by key or value
         if ($sortByKey)
@@ -2288,6 +2293,16 @@ class D
         }
 
         return $string;
+    }
+
+    public static function implode_by_comma($array, $is_string=false)
+    {
+        if (!$is_string)
+        {
+            return implode(',', $array);
+        }
+
+        return "'" . implode("','", $array) . "'";
     }
 }
 
