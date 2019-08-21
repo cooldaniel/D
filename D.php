@@ -1923,7 +1923,7 @@ class D
      */
     public static function s()
     {
-        self::p('s_total_profile');
+        self::profile('s_total_profile');
         DB::enableQueryLog();
     }
 
@@ -1941,7 +1941,7 @@ class D
     public static function ss($asString=false)
     {
         // time total
-        $timeTotal = self::pp('s_total_profile', true);
+        $timeTotal = self::profilee('s_total_profile', true);
 
         // query list
         $data = DB::getQueryLog();
@@ -1972,6 +1972,7 @@ class D
         $content .= "\n\n" . $_SERVER['SERVER_NAME'] . $_SERVER['REQUEST_URI']; // the current request url
         $content .= QueryLog::formatStat($stat); // stat info
         $content .= QueryLog::formatDataToDisplay($data); // sql list
+        
         self::log($content);
     }
 
@@ -2216,7 +2217,14 @@ class D
 
     public static function formatSql($sql, $highlight=false)
     {
-        return "\n".SqlFormatter::format($sql, $highlight)."\n";
+        $sql = SqlFormatter::format($sql, $highlight);
+        $sql = self::finetuneFormatSql($sql, $highlight);
+        return "\n".$sql."\n";
+    }
+
+    private static function finetuneFormatSql($sql)
+    {
+        return $sql;
     }
 
     public static function pdSql($sql, $slight=false)
@@ -2259,40 +2267,6 @@ class D
         self::$_skip_pdo = true;
         self::logce(self::formatSql($sql, false));
         self::$_skip_pdo = false;
-    }
-
-    public static function dd($string)
-    {
-        $string = str_replace('\"', '', $string);
-        $string = str_replace('\\n', '', $string);
-
-        $string = str_replace('\t', '', $string);
-//        $string = str_replace('\"', '"', $string);
-        $string = str_replace("\\", '', $string);
-
-        if (isset($_GET['dd_ignore']))
-        {
-            return $string;
-        }
-
-        $string = @json_decode($string, true);
-
-        if (json_last_error() == JSON_ERROR_NONE)
-        {
-            $string = json_encode($string, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES);
-            $string = json_decode($string, true);
-
-            $string = substr($string['errorMess'], 21, strlen($string['errorMess']) - 22);
-
-            $string = str_replace('<div style=border:1px solid #990000;padding-left:20px;margin:0 0 10px 0;>', '', $string);
-            $string = str_replace('</div>', '', $string);
-            $string = str_replace('<p style=margin-left:10px>', "\n", $string);
-            $string = str_replace('<br />', "\n", $string);
-            $string = str_replace('</p>', "\n", $string);
-//            $string = preg_replace('<p>', "\n", $string);
-        }
-
-        return $string;
     }
 
     public static function implode_by_comma($array, $is_string=false)
