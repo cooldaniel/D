@@ -93,6 +93,7 @@ class D
     const SORT_DESC = 2;
 
 	private static $_logPath;
+	private static $_logFileName;
 	private static $_iconv = null;
 	private static $_message = '';
 	private static $_arg_pos = 0;
@@ -110,6 +111,16 @@ class D
     private static $_shutdownLog = [];
     private static $_line_chars = ['-', '=', '*', '!', '#', '@', '$', '%', '^', '&', '<', '>'];
     private static $_line_char_index = 0;
+
+    public static function setLogFileName($filename)
+    {
+        if (strpos('/', $filename) !== false || strpos('\\', $filename) !== false)
+        {
+            throw new \Exception('D::logFile不能包含斜杠和反斜杠');
+        }
+
+        self::$_logFileName = $filename;
+    }
 
     /**
      * 如果打印的内容只需要原格式输出，可以跳过pdo处理，例如记录已经格式化好的sql的时候.
@@ -535,7 +546,15 @@ class D
 	// save to file
 	private static function logSaveToFile($content)
     {
-        $file = self::getLogPath() . '/DumperLogFile.ig.txt';
+        if (empty(self::$_logFileName))
+        {
+            $file = self::getLogPath() . '/DumperLogFile.ig.txt';
+        }
+        else
+        {
+            $file = self::getLogPath() . '/' . self::$_logFileName;
+        }
+
         if (self::$_clear)
         {
             file_put_contents($file, $content, LOCK_EX);
