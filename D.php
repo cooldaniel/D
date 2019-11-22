@@ -13,6 +13,12 @@ if (function_exists('DB')) {
     require_once dirname(__FILE__) . '/use-laravel-database.php';
 }
 
+// 引入sql格式化组件
+if (!class_exists('SqlFormatter'))
+{
+    require_once dirname(__FILE__) . '/SqlFormatter.php';
+}
+
 /**
  * 类名D是Dumper的缩写，意指该静态类的功用是打印变量信息。它由一系列的变量打印方法组成：
  * 
@@ -79,6 +85,417 @@ defined('DUMPER_HANDLER_DISCARD_OUTPUT') or define('DUMPER_HANDLER_DISCARD_OUTPU
 defined('DUMPER_LOG_ACTIVE') or define('DUMPER_LOG_ACTIVE', true);
 
 register_shutdown_function('D::shutdown');
+
+class QueryLog
+{
+    /**
+     * Optimize level.
+     */
+    const OPTIMIZE_LEVEL_URGENCY = 1;
+    const OPTIMIZE_LEVEL_SHOULD = 2;
+    const OPTIMIZE_LEVEL_SUGGEST = 3;
+    const OPTIMIZE_LEVEL_NEEDLESS = 4;
+
+    /**
+     * Time limit.
+     */
+    const TIME_TOTAL_LIMIT = 3000;
+    const SQL_TIME_TOTAL_LIMIT = 1000;
+
+    private static $avgCountList;
+
+    public static function parseQueryLog($data)
+    {
+        // 记录laravel数据库sql时，sql只有占位符和绑定数据，不方便复制查询，这里查找并替换问号
+        foreach ($data as $index => $row) {
+
+            $query = $row['query'];
+
+            // 处理绑定关系
+            if (!empty($row['bindings'])) {
+                $bindings = $row['bindings'];
+
+                // 循环查找并替换
+                $start = 0; // 开始查找位置
+                $key = 0; // 绑定内容位置
+                while (($pos = strpos($query, '?', $start)) !== false) {
+
+                    // 绑定内容
+                    $value = $bindings[$key];
+
+                    // 绑定内容是字符串，加双引号
+                    if (is_string($value)) {
+                        $value = "'{$value}'";
+                    }
+
+                    // 替换问号出现的位置 - 截取问号前后部分，中间用值代替
+                    $query = substr($query, 0, $pos) . $value . substr($query, $pos + 1);
+
+                    // 查找下一个问号
+                    $start = $pos+1;
+
+                    // 绑定内容位置进一
+                    $key++;
+                }
+            }
+
+            $row = array_merge(['replace'=>$query], $row);
+
+            $data[$index] = $row;
+        }
+
+        return $data;
+    }
+
+    public static function explain(&$data)
+    {
+        foreach ($data as &$row) {
+
+            // unset the query and bindings field
+            unset($row['query'], $row['bindings']);
+
+            // create sql sign
+            $row['sign'] = md5($row['replace']);
+
+            // is the sql slow?
+            if ($row['time'] > self::SQL_TIME_TOTAL_LIMIT) {
+                $row['slow'] = '慢，超过 ' . self::SQL_TIME_TOTAL_LIMIT / 1000 . ' 秒';
+            }
+
+            // time as second
+            $row['time_second'] = $row['time'] / 1000;
+
+            // explain the select sql
+            $row['explain'] = [];
+            $explainList = \DB::select('explain '.$row['replace']);
+            foreach ($explainList as $explain) {
+                $explainString = '';
+                foreach ($explain as $attribute => $value) {
+                    $explainString .= strtoupper($attribute) . '=' . $value . '  ';
+                }
+                $row['explain'][] = $explainString;
+            }
+        }
+    }
+
+    public static function signAndRepeat(&$data)
+    {
+        // 标识列表
+        $signList = array_column($data, 'sign');
+
+        // 附加次数
+        foreach ($data as $index => &$row) {
+
+            $repeatRow = [];
+
+            foreach ($signList as $key => $sign) {
+
+                // 跳过当前行
+                if ($index == $key) {
+                    continue;
+                }
+
+                // 记录重复行号
+                if ($sign == $row['sign']) {
+                    $repeatRow[] = $key;
+                }
+            }
+
+            // 显示重复行号
+            if (count($repeatRow)) {
+                $row['repeat'] = '重复：和第 ' . implode(', ', $repeatRow) . ' 行重复，一共重复 ' . count($repeatRow) . ' 次';
+            }
+
+            unset($row['sign']);
+        }
+    }
+
+    public static function stat($data, $timeTotal)
+    {
+        $stat = [];
+
+        // total time stat
+        $stat['time_total'] = $timeTotal;
+        $stat['time_total_limit'] = self::TIME_TOTAL_LIMIT / 1000;
+        $timeTotalIsExceeded = self::getIsExceeded($stat['time_total'], $stat['time_total_limit']);
+        $stat['time_is_exceeded'] = $timeTotalIsExceeded;
+        $stat['time_total_exceeded'] = self::formatIsExceeded($timeTotalIsExceeded);
+
+        // sql count
+        $stat['sql_count_total'] = count($data);
+
+        if ($stat['sql_count_total']) {
+
+            // sql time stat
+            $stat['sql_time_total_micro'] = array_sum(array_column($data, 'time'));
+            $stat['sql_time_total'] = $stat['sql_time_total_micro'] / 1000;
+            $stat['sql_time_total_limit'] = self::SQL_TIME_TOTAL_LIMIT / 1000;
+            $sqlTimeTotalIsExceeded = self::getIsExceeded($stat['sql_time_total'], $stat['sql_time_total_limit']);
+            $stat['sql_time_is_exceeded'] = $sqlTimeTotalIsExceeded;
+            $stat['sql_time_total_exceeded'] = self::formatIsExceeded($sqlTimeTotalIsExceeded);
+            $stat['sql_time_percent_of_total'] = self::getRate($timeTotal, $stat['sql_time_total']);
+
+            // else time stat
+            $stat['else_time_total'] = $timeTotal - $stat['sql_time_total'];
+            $stat['else_time_total_limit'] = $stat['time_total_limit'] - $stat['sql_time_total_limit'];
+            $elseTimeTotalIsExceeded = self::getIsExceeded($stat['else_time_total'], $stat['else_time_total_limit']);
+            $stat['else_time_is_exceeded'] = $elseTimeTotalIsExceeded;
+            $stat['else_time_total_exceeded'] = self::formatIsExceeded($elseTimeTotalIsExceeded);
+            $stat['else_time_percent_of_total'] = self::getRate($timeTotal, $stat['else_time_total']);
+
+            // sql time avg
+            $stat['sql_time_avg'] = $stat['sql_time_total'] / $stat['sql_count_total'];
+            $stat['sql_time_avg_micro'] = $stat['sql_time_total_micro'] / $stat['sql_count_total'];
+
+            // sql count avg
+            $avgCountList = self::getSqlExceededAvgList($stat['sql_time_avg_micro'], $data);
+            $avgCount = count($avgCountList);
+            if ($avgCount) {
+                $stat['sql_exceeded_avg_count'] = $avgCount . ' 个，分别是 ' . implode(', ', $avgCountList);
+            } else {
+                $stat['sql_exceeded_avg_count'] = '0 个';
+            }
+
+            // compare sql time avg with sql time total exceeded
+            if ($sqlTimeTotalIsExceeded['exceeded'] > 0) {
+                $stat['sql_time_avg_with_time_total_exceeded'] = sprintf('%.2f', $sqlTimeTotalIsExceeded['exceeded'] / $stat['sql_time_avg']);
+            } else {
+                $stat['sql_time_avg_with_time_total_exceeded'] = 0;
+            }
+
+            // sql repeat list
+            $sqlRepeatList = self::getSqlRepeatList($data);
+            $sqlRepeatCount = count($sqlRepeatList) / 2;
+            $stat['sql_repeat_list'] = "，{$sqlRepeatCount} 个重复";
+            if ($sqlRepeatCount) {
+                $stat['sql_repeat_list'] .= "，分别是 " . implode(', ', $sqlRepeatList);
+            }
+        }
+
+        return $stat;
+    }
+
+    public static function getSqlRepeatList($data)
+    {
+        $repeatList = [];
+        foreach ($data as $index => $item) {
+            if (isset($item['repeat'])) {
+                $repeatList[] = $index;
+            }
+        }
+        return $repeatList;
+    }
+
+    public static function markAvgTime(&$data, $stat)
+    {
+        // avg count list
+        $avgCountList = self::getSqlExceededAvgList($stat['sql_time_avg_micro'], $data);
+
+        // time elapse order
+        $timeList = array_column($data, 'time');
+        rsort($timeList);
+
+        foreach ($data as $index => &$row) {
+
+            // exceeded avg time
+            $isExceededAvgTime = in_array($index, $avgCountList);
+            if ($isExceededAvgTime) {
+
+                $row['exceeded_avg_time'] = '超过了平均时间（'.$stat['sql_time_avg_micro'].' 毫秒）';
+            }
+
+            // sort order
+            if ($isExceededAvgTime) {
+
+                $order = array_search($row['time'], $timeList) + 1;
+                $row['time_elapse_order'] = '耗时排名第 ' . $order . ' 位';
+            }
+        }
+    }
+
+    public static function getSqlExceededAvgList($timeAvgMicro, $data)
+    {
+        if (self::$avgCountList === null) {
+
+            self::$avgCountList = [];
+            foreach ($data as $index => $row) {
+                if ($row['time'] > $timeAvgMicro) {
+                    self::$avgCountList[] = $index;
+                }
+            }
+        }
+        return self::$avgCountList;
+    }
+
+    public static function getIsExceeded($time, $limit)
+    {
+        $exceeded = $time - $limit;
+
+        $rate = self::getRate($time, $exceeded);
+        $level = self::getLevelByRate($rate);
+        $levelText = self::getLevelText($level);
+
+        return [
+            'exceeded'=>$exceeded,
+            'rate'=>$rate,
+            'levelText'=>$levelText,
+        ];
+    }
+
+    public static function formatIsExceeded($isExceeded)
+    {
+        extract($isExceeded);
+
+        if ($rate <= 0) {
+            return '没有超过限制';
+        } else {
+            return "超限 {$exceeded} 秒，超限 {$rate}%，{$levelText}";
+        }
+    }
+
+    public static function getRate($total, $part)
+    {
+        return sprintf('%.2f', $part / $total) * 100;
+    }
+
+    public static function getLevelByRate($rate)
+    {
+        if ($rate <= 0) {
+            return self::OPTIMIZE_LEVEL_NEEDLESS;
+        } elseif ($rate <= 25) {
+            return self::OPTIMIZE_LEVEL_SUGGEST;
+        } elseif ($rate <= 75) {
+            return self::OPTIMIZE_LEVEL_SHOULD;
+        } else {
+            return self::OPTIMIZE_LEVEL_URGENCY;
+        }
+    }
+
+    public static function getLevelText($level)
+    {
+        $data = [
+            self::OPTIMIZE_LEVEL_URGENCY => '紧急优化',
+            self::OPTIMIZE_LEVEL_SHOULD => '应该优化',
+            self::OPTIMIZE_LEVEL_SUGGEST => '建议优化',
+            self::OPTIMIZE_LEVEL_NEEDLESS => '不需要优化',
+        ];
+
+        return $data[$level] ?? 'unknown';
+    }
+
+    public static function formatStat($stat)
+    {
+        if ($stat['sql_count_total']) {
+
+            $info = <<<EOF
+
+
+性能统计
+    
+    总时间：限制 {time_total_limit} 秒，实际 {time_total} 秒，{time_total_exceeded}
+    sql总时间：限制 {sql_time_total_limit} 秒，实际 {sql_time_total} 秒，占总时间 {sql_time_percent_of_total}%，{sql_time_total_exceeded}
+    其它总时间：限制 {else_time_total_limit} 秒，实际 {else_time_total} 秒，占总时间 {else_time_percent_of_total}%，{else_time_total_exceeded}
+    
+    sql总数量：{sql_count_total} 个{sql_repeat_list}
+    sql总时间：{sql_time_total} 秒 / {sql_time_total_micro} 毫秒
+    sql平均时间：{sql_time_avg} 秒 / {sql_time_avg_micro} 毫秒
+    超过平均时间的sql：{sql_exceeded_avg_count}
+    
+    sql超限时间是平均时间的 {sql_time_avg_with_time_total_exceeded} 倍
+
+
+EOF;
+
+        } else {
+
+        $info = <<<EOF
+
+
+性能统计
+    
+    总时间：限制 {time_total_limit} 秒，实际 {time_total} 秒，{time_total_exceeded}
+    sql总时间：没有sql查询
+    其它总时间：等于总时间
+
+
+EOF;
+
+        }
+
+        self::replaceKey($stat);
+        return strtr($info, $stat);
+    }
+
+    public static function replaceKey(&$data, $prefix='{', $postfix='}')
+    {
+        foreach ($data as $key => $value) {
+            $newKey = $prefix . $key . $postfix;
+            $data[$newKey] = $value;
+
+            unset($data[$key]);
+        }
+    }
+
+    public static function breakWithLength($string, $len)
+    {
+//        $stringLen = strlen($string);
+//
+//        if ($len >= $stringLen) {
+//            return $string;
+//        }
+//
+//        $times = $stringLen / $len;
+//
+//        while(true) {
+//
+//
+//
+//        }
+
+    }
+
+    public static function formatDataToDisplay($data)
+    {
+        $rowInfo = <<<EOD
+
+[{index}]
+    {replace}
+    
+    {explain_list}
+    
+    {time_elapse_order}{exceeded_avg_time}耗时：{time_second} 秒 / {time} 毫秒{slow}{repeat}
+    
+EOD;
+
+        $res = "\nsql查询列表\n";
+
+        $allSql = '';
+
+        foreach ($data as $index => $row) {
+
+            $res .= strtr($rowInfo, [
+                '{index}'=>$index,
+                '{replace}'=>$row['replace'],
+                '{explain_list}'=>implode("\n    ", $row['explain']),
+                '{time}'=>$row['time'],
+                '{time_second}'=>$row['time_second'],
+                '{exceeded_avg_time}'=>isset($row['exceeded_avg_time']) ? $row['exceeded_avg_time'] . "\n    " : '',
+                '{time_elapse_order}'=>isset($row['time_elapse_order']) ? $row['time_elapse_order'] . "\n    " : '',
+                '{slow}'=>isset($row['slow']) ? "\n    " . $row['slow'] : '',
+                '{repeat}'=>isset($row['repeat']) ? "\n    " . $row['repeat'] : '',
+            ]);
+
+            $allSql .= $row['replace'] . ";\n";
+        }
+
+        $res .= "\n";
+        $res .= $allSql;
+
+        $res .= "\n";
+
+        return $res;
+    }
+}
 
 class D
 {
@@ -2297,415 +2714,32 @@ class D
 
         return "'" . implode("','", $array) . "'";
     }
-}
 
-class QueryLog
-{
-    /**
-     * Optimize level.
-     */
-    const OPTIMIZE_LEVEL_URGENCY = 1;
-    const OPTIMIZE_LEVEL_SHOULD = 2;
-    const OPTIMIZE_LEVEL_SUGGEST = 3;
-    const OPTIMIZE_LEVEL_NEEDLESS = 4;
-
-    /**
-     * Time limit.
-     */
-    const TIME_TOTAL_LIMIT = 3000;
-    const SQL_TIME_TOTAL_LIMIT = 1000;
-
-    private static $avgCountList;
-
-    public static function parseQueryLog($data)
+    public static function yiisql($model)
     {
-        // 记录laravel数据库sql时，sql只有占位符和绑定数据，不方便复制查询，这里查找并替换问号
-        foreach ($data as $index => $row) {
-
-            $query = $row['query'];
-
-            // 处理绑定关系
-            if (!empty($row['bindings'])) {
-                $bindings = $row['bindings'];
-
-                // 循环查找并替换
-                $start = 0; // 开始查找位置
-                $key = 0; // 绑定内容位置
-                while (($pos = strpos($query, '?', $start)) !== false) {
-
-                    // 绑定内容
-                    $value = $bindings[$key];
-
-                    // 绑定内容是字符串，加双引号
-                    if (is_string($value)) {
-                        $value = "'{$value}'";
-                    }
-
-                    // 替换问号出现的位置 - 截取问号前后部分，中间用值代替
-                    $query = substr($query, 0, $pos) . $value . substr($query, $pos + 1);
-
-                    // 查找下一个问号
-                    $start = $pos+1;
-
-                    // 绑定内容位置进一
-                    $key++;
-                }
-            }
-
-            $row = array_merge(['replace'=>$query], $row);
-
-            $data[$index] = $row;
-        }
-
-        return $data;
+        self::$_message = 'yiisql';
+        $sql = $model->createCommand()->getRawSql();
+        self::logSql($sql);
+        self::$_message = '';
+        return $sql;
     }
 
-    public static function explain(&$data)
+    public static function formatTime($time, $format='Y-m-d H:i:s')
     {
-        foreach ($data as &$row) {
-
-            // unset the query and bindings field
-            unset($row['query'], $row['bindings']);
-
-            // create sql sign
-            $row['sign'] = md5($row['replace']);
-
-            // is the sql slow?
-            if ($row['time'] > self::SQL_TIME_TOTAL_LIMIT) {
-                $row['slow'] = '慢，超过 ' . self::SQL_TIME_TOTAL_LIMIT / 1000 . ' 秒';
-            }
-
-            // time as second
-            $row['time_second'] = $row['time'] / 1000;
-
-            // explain the select sql
-            $row['explain'] = [];
-            $explainList = \DB::select('explain '.$row['replace']);
-            foreach ($explainList as $explain) {
-                $explainString = '';
-                foreach ($explain as $attribute => $value) {
-                    $explainString .= strtoupper($attribute) . '=' . $value . '  ';
-                }
-                $row['explain'][] = $explainString;
-            }
-        }
+        return date($format, $time);
     }
 
-    public static function signAndRepeat(&$data)
+    public static function lastquery($model)
     {
-        // 标识列表
-        $signList = array_column($data, 'sign');
-
-        // 附加次数
-        foreach ($data as $index => &$row) {
-
-            $repeatRow = [];
-
-            foreach ($signList as $key => $sign) {
-
-                // 跳过当前行
-                if ($index == $key) {
-                    continue;
-                }
-
-                // 记录重复行号
-                if ($sign == $row['sign']) {
-                    $repeatRow[] = $key;
-                }
-            }
-
-            // 显示重复行号
-            if (count($repeatRow)) {
-                $row['repeat'] = '重复：和第 ' . implode(', ', $repeatRow) . ' 行重复，一共重复 ' . count($repeatRow) . ' 次';
-            }
-
-            unset($row['sign']);
-        }
+        $sql = $model->db->last_query();
+        self::$_message = 'sql';
+        self::log($sql);
+        self::$_message = '';
     }
 
-    public static function stat($data, $timeTotal)
+    public static function lastquerye($model)
     {
-        $stat = [];
-
-        // total time stat
-        $stat['time_total'] = $timeTotal;
-        $stat['time_total_limit'] = self::TIME_TOTAL_LIMIT / 1000;
-        $timeTotalIsExceeded = self::getIsExceeded($stat['time_total'], $stat['time_total_limit']);
-        $stat['time_is_exceeded'] = $timeTotalIsExceeded;
-        $stat['time_total_exceeded'] = self::formatIsExceeded($timeTotalIsExceeded);
-
-        // sql count
-        $stat['sql_count_total'] = count($data);
-
-        if ($stat['sql_count_total']) {
-
-            // sql time stat
-            $stat['sql_time_total_micro'] = array_sum(array_column($data, 'time'));
-            $stat['sql_time_total'] = $stat['sql_time_total_micro'] / 1000;
-            $stat['sql_time_total_limit'] = self::SQL_TIME_TOTAL_LIMIT / 1000;
-            $sqlTimeTotalIsExceeded = self::getIsExceeded($stat['sql_time_total'], $stat['sql_time_total_limit']);
-            $stat['sql_time_is_exceeded'] = $sqlTimeTotalIsExceeded;
-            $stat['sql_time_total_exceeded'] = self::formatIsExceeded($sqlTimeTotalIsExceeded);
-            $stat['sql_time_percent_of_total'] = self::getRate($timeTotal, $stat['sql_time_total']);
-
-            // else time stat
-            $stat['else_time_total'] = $timeTotal - $stat['sql_time_total'];
-            $stat['else_time_total_limit'] = $stat['time_total_limit'] - $stat['sql_time_total_limit'];
-            $elseTimeTotalIsExceeded = self::getIsExceeded($stat['else_time_total'], $stat['else_time_total_limit']);
-            $stat['else_time_is_exceeded'] = $elseTimeTotalIsExceeded;
-            $stat['else_time_total_exceeded'] = self::formatIsExceeded($elseTimeTotalIsExceeded);
-            $stat['else_time_percent_of_total'] = self::getRate($timeTotal, $stat['else_time_total']);
-
-            // sql time avg
-            $stat['sql_time_avg'] = $stat['sql_time_total'] / $stat['sql_count_total'];
-            $stat['sql_time_avg_micro'] = $stat['sql_time_total_micro'] / $stat['sql_count_total'];
-
-            // sql count avg
-            $avgCountList = self::getSqlExceededAvgList($stat['sql_time_avg_micro'], $data);
-            $avgCount = count($avgCountList);
-            if ($avgCount) {
-                $stat['sql_exceeded_avg_count'] = $avgCount . ' 个，分别是 ' . implode(', ', $avgCountList);
-            } else {
-                $stat['sql_exceeded_avg_count'] = '0 个';
-            }
-
-            // compare sql time avg with sql time total exceeded
-            if ($sqlTimeTotalIsExceeded['exceeded'] > 0) {
-                $stat['sql_time_avg_with_time_total_exceeded'] = sprintf('%.2f', $sqlTimeTotalIsExceeded['exceeded'] / $stat['sql_time_avg']);
-            } else {
-                $stat['sql_time_avg_with_time_total_exceeded'] = 0;
-            }
-
-            // sql repeat list
-            $sqlRepeatList = self::getSqlRepeatList($data);
-            $sqlRepeatCount = count($sqlRepeatList) / 2;
-            $stat['sql_repeat_list'] = "，{$sqlRepeatCount} 个重复";
-            if ($sqlRepeatCount) {
-                $stat['sql_repeat_list'] .= "，分别是 " . implode(', ', $sqlRepeatList);
-            }
-        }
-
-        return $stat;
-    }
-
-    public static function getSqlRepeatList($data)
-    {
-        $repeatList = [];
-        foreach ($data as $index => $item) {
-            if (isset($item['repeat'])) {
-                $repeatList[] = $index;
-            }
-        }
-        return $repeatList;
-    }
-
-    public static function markAvgTime(&$data, $stat)
-    {
-        // avg count list
-        $avgCountList = self::getSqlExceededAvgList($stat['sql_time_avg_micro'], $data);
-
-        // time elapse order
-        $timeList = array_column($data, 'time');
-        rsort($timeList);
-
-        foreach ($data as $index => &$row) {
-
-            // exceeded avg time
-            $isExceededAvgTime = in_array($index, $avgCountList);
-            if ($isExceededAvgTime) {
-
-                $row['exceeded_avg_time'] = '超过了平均时间（'.$stat['sql_time_avg_micro'].' 毫秒）';
-            }
-
-            // sort order
-            if ($isExceededAvgTime) {
-
-                $order = array_search($row['time'], $timeList) + 1;
-                $row['time_elapse_order'] = '耗时排名第 ' . $order . ' 位';
-            }
-        }
-    }
-
-    public static function getSqlExceededAvgList($timeAvgMicro, $data)
-    {
-        if (self::$avgCountList === null) {
-
-            self::$avgCountList = [];
-            foreach ($data as $index => $row) {
-                if ($row['time'] > $timeAvgMicro) {
-                    self::$avgCountList[] = $index;
-                }
-            }
-        }
-        return self::$avgCountList;
-    }
-
-    public static function getIsExceeded($time, $limit)
-    {
-        $exceeded = $time - $limit;
-
-        $rate = self::getRate($time, $exceeded);
-        $level = self::getLevelByRate($rate);
-        $levelText = self::getLevelText($level);
-
-        return [
-            'exceeded'=>$exceeded,
-            'rate'=>$rate,
-            'levelText'=>$levelText,
-        ];
-    }
-
-    public static function formatIsExceeded($isExceeded)
-    {
-        extract($isExceeded);
-
-        if ($rate <= 0) {
-            return '没有超过限制';
-        } else {
-            return "超限 {$exceeded} 秒，超限 {$rate}%，{$levelText}";
-        }
-    }
-
-    public static function getRate($total, $part)
-    {
-        return sprintf('%.2f', $part / $total) * 100;
-    }
-
-    public static function getLevelByRate($rate)
-    {
-        if ($rate <= 0) {
-            return self::OPTIMIZE_LEVEL_NEEDLESS;
-        } elseif ($rate <= 25) {
-            return self::OPTIMIZE_LEVEL_SUGGEST;
-        } elseif ($rate <= 75) {
-            return self::OPTIMIZE_LEVEL_SHOULD;
-        } else {
-            return self::OPTIMIZE_LEVEL_URGENCY;
-        }
-    }
-
-    public static function getLevelText($level)
-    {
-        $data = [
-            self::OPTIMIZE_LEVEL_URGENCY => '紧急优化',
-            self::OPTIMIZE_LEVEL_SHOULD => '应该优化',
-            self::OPTIMIZE_LEVEL_SUGGEST => '建议优化',
-            self::OPTIMIZE_LEVEL_NEEDLESS => '不需要优化',
-        ];
-
-        return $data[$level] ?? 'unknown';
-    }
-
-    public static function formatStat($stat)
-    {
-        if ($stat['sql_count_total']) {
-
-            $info = <<<EOF
-
-
-性能统计
-    
-    总时间：限制 {time_total_limit} 秒，实际 {time_total} 秒，{time_total_exceeded}
-    sql总时间：限制 {sql_time_total_limit} 秒，实际 {sql_time_total} 秒，占总时间 {sql_time_percent_of_total}%，{sql_time_total_exceeded}
-    其它总时间：限制 {else_time_total_limit} 秒，实际 {else_time_total} 秒，占总时间 {else_time_percent_of_total}%，{else_time_total_exceeded}
-    
-    sql总数量：{sql_count_total} 个{sql_repeat_list}
-    sql总时间：{sql_time_total} 秒 / {sql_time_total_micro} 毫秒
-    sql平均时间：{sql_time_avg} 秒 / {sql_time_avg_micro} 毫秒
-    超过平均时间的sql：{sql_exceeded_avg_count}
-    
-    sql超限时间是平均时间的 {sql_time_avg_with_time_total_exceeded} 倍
-
-
-EOF;
-
-        } else {
-
-        $info = <<<EOF
-
-
-性能统计
-    
-    总时间：限制 {time_total_limit} 秒，实际 {time_total} 秒，{time_total_exceeded}
-    sql总时间：没有sql查询
-    其它总时间：等于总时间
-
-
-EOF;
-
-        }
-
-        self::replaceKey($stat);
-        return strtr($info, $stat);
-    }
-
-    public static function replaceKey(&$data, $prefix='{', $postfix='}')
-    {
-        foreach ($data as $key => $value) {
-            $newKey = $prefix . $key . $postfix;
-            $data[$newKey] = $value;
-
-            unset($data[$key]);
-        }
-    }
-
-    public static function breakWithLength($string, $len)
-    {
-//        $stringLen = strlen($string);
-//
-//        if ($len >= $stringLen) {
-//            return $string;
-//        }
-//
-//        $times = $stringLen / $len;
-//
-//        while(true) {
-//
-//
-//
-//        }
-
-    }
-
-    public static function formatDataToDisplay($data)
-    {
-        $rowInfo = <<<EOD
-
-[{index}]
-    {replace}
-    
-    {explain_list}
-    
-    {time_elapse_order}{exceeded_avg_time}耗时：{time_second} 秒 / {time} 毫秒{slow}{repeat}
-    
-EOD;
-
-        $res = "\nsql查询列表\n";
-
-        $allSql = '';
-
-        foreach ($data as $index => $row) {
-
-            $res .= strtr($rowInfo, [
-                '{index}'=>$index,
-                '{replace}'=>$row['replace'],
-                '{explain_list}'=>implode("\n    ", $row['explain']),
-                '{time}'=>$row['time'],
-                '{time_second}'=>$row['time_second'],
-                '{exceeded_avg_time}'=>isset($row['exceeded_avg_time']) ? $row['exceeded_avg_time'] . "\n    " : '',
-                '{time_elapse_order}'=>isset($row['time_elapse_order']) ? $row['time_elapse_order'] . "\n    " : '',
-                '{slow}'=>isset($row['slow']) ? "\n    " . $row['slow'] : '',
-                '{repeat}'=>isset($row['repeat']) ? "\n    " . $row['repeat'] : '',
-            ]);
-
-            $allSql .= $row['replace'] . ";\n";
-        }
-
-        $res .= "\n";
-        $res .= $allSql;
-
-        $res .= "\n";
-
-        return $res;
+        self::lastquery($model);
+        exit();
     }
 }
