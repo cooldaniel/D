@@ -528,6 +528,35 @@ class D
     private static $_shutdownLog = [];
     private static $_line_chars = ['-', '=', '*', '!', '#', '@', '$', '%', '^', '&', '<', '>'];
     private static $_line_char_index = 0;
+    private static $_yiiLogSql = false;
+
+    public static function setMessage($message)
+    {
+        self::$_message = $message;
+    }
+
+    public static function getYiiLogSql()
+    {
+        return self::$_yiiLogSql;
+    }
+
+    public static function setYiiLogSql($bool)
+    {
+        self::$_yiiLogSql = $bool;
+    }
+
+    public static function yiiLogSql($cmd, $par)
+    {
+        if (\D::getYiiLogSql())
+        {
+//            \D::setLogFileName('sql_file.txt');
+            $sql = "\n\n".$cmd->getText().$par."\n";
+            $sql .= "\n" . \D::getTrace() . "\n";
+            \D::setMessage('sql');
+            \D::log($sql);
+//            \D::setLogFileName('DumperLogFile.ig.txt');
+        }
+    }
 
     public static function setLogFileName($filename)
     {
