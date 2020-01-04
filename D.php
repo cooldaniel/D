@@ -540,21 +540,35 @@ class D
         return self::$_yiiLogSql;
     }
 
-    public static function setYiiLogSql($bool)
+    public static function enableYiiLogSql($enable=true)
     {
-        self::$_yiiLogSql = $bool;
+        self::$_yiiLogSql = (bool)$enable;
     }
 
-    public static function yiiLogSql($cmd, $par)
+    public static function yiiLogSql($cmd, $par, $useSqlLogFile=false)
     {
         if (\D::getYiiLogSql())
         {
-//            \D::setLogFileName('sql_file.txt');
+            // 使用sql文件记录
+            if ($useSqlLogFile)
+            {
+                \D::setLogFileName('DumperLogFile_sql.ig.txt');
+            }
+
+            // 获取sql和trace
             $sql = "\n\n".$cmd->getText().$par."\n";
             $sql .= "\n" . \D::getTrace() . "\n";
+
+            // 记录sql
             \D::setMessage('sql');
             \D::log($sql);
-//            \D::setLogFileName('DumperLogFile.ig.txt');
+            \D::setMessage('');
+
+            // 恢复原来的记录文件
+            if ($useSqlLogFile)
+            {
+                \D::setLogFileName('DumperLogFile.ig.txt');
+            }
         }
     }
 
@@ -573,6 +587,17 @@ class D
      * @var bool
      */
     private static $_skip_pdo = false;
+
+    /**
+     * 自动检测换行符.
+     * @param bool $enable
+     * @link https://www.php.net/manual/zh/function.file.php
+     * Note: 在读取在 Macintosh 电脑中或由其创建的文件时， 如果 PHP 不能正确的识别行结束符，启用运行时配置可选项 auto_detect_line_endings 也许可以解决此问题。
+     */
+    private static function autoDetectLineEndings($enable=true)
+    {
+        ini_set('auto_detect_line_endings', (bool)$enable);
+    }
 
     public static function pdsException()
     {
@@ -1156,6 +1181,23 @@ class D
 	 */
 	private static function prefixMessage($content, $highlight=false)
 	{
+        $message = self::generatePrefixMessage();
+
+		return $highlight ? '<span class="toggle">' . $position . '#' . $message . '</span> '. $content : $position . '#' . $message . ' ' . $content;
+	}
+
+    /**
+     * 生成message.
+     * @return mixed|string
+     */
+	private function generatePrefixMessage()
+    {
+        // 指定名称
+        if (self::$_message != '')
+        {
+            return self::$_message;
+        }
+
         // 调用堆栈
         $d = self::getDebugBacktrace();
 
@@ -1165,33 +1207,26 @@ class D
         // 调用位置
         $position = self::getPositionFromDebugBacktraceRow($v);
 
-        if (self::$_message != '')
+        if (empty($v))
         {
-            // 指定名称
-            $message = self::$_message;
+            return "Can't get the arg message.";
         }
-        else
+
+        // 预定义函数名
+        $message = self::namesMap($v['function']);
+
+        if ($message == '')
         {
-            if ($v !== [])
+            $message = self::fetchArgName($v['file'], $v['line']);
+
+            if ($v['function'] == 'count')
             {
-                $message = self::namesMap($v['function']);
-                if ($message == '')
-                {
-                    $message = self::fetchArgName($v['file'], $v['line']);
-                    if ($v['function'] == 'count')
-                    {
-                        $message = 'count(' . $message . ')';
-                    }
-                }
-            }
-            else
-            {
-                $message = "Can't get the arg message.";
+                $message = 'count(' . $message . ')';
             }
         }
-		
-		return $highlight ? '<span class="toggle">' . $position . '#' . $message . '</span> '. $content : $position . '#' . $message . ' ' . $content;
-	}
+
+        return $message;
+    }
 
 	private static function getPositionFromDebugBacktrace()
     {
@@ -1271,12 +1306,18 @@ class D
 		{
 			// 把调用行合并成单行
 			$text = '';
+
+			// 读取文件内容的时候实时开启和关闭文件换行符检测，避免影响其它程序
+			self::autoDetectLineEndings();
 			$lines = file($file);
+			self::autoDetectLineEndings(false);
+
 			$line_num = $line_num - 1;
 			if ($line_num < 0)
             {
                 $line_num = 0;
             }
+
 			while (strpos(($line = $lines[$line_num]), 'D::') === false)
 			{
 				$text = $line . $text;
