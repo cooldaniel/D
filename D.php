@@ -497,6 +497,103 @@ EOD;
     }
 }
 
+class DTempFile
+{
+    /**
+     * 删除临时文件
+     * @param string $filenameId
+     */
+    public static function deleteTempFile($filenameId='')
+    {
+        $file = self::getTempFile($filenameId);
+
+        unlink($file);
+    }
+
+    /**
+     * 保存数据到临时文件.
+     * 用json格式保存，文件已存在就不处理，如果想重试，必须删除已有文件.
+     * 调用远程接口的时候，接口耗时、调用次数限制、网络不稳定等，可以将调用结果保存为临时文件，避免调试的时候总是调用接口，节省时间.
+     * @param $data
+     * @param string $filenameId
+     */
+    public static function saveToTempFileAppend($data, $filenameId='')
+    {
+        $file = self::getTempFile($filenameId);
+
+        file_put_contents($file, json_encode($data)."\n", FILE_APPEND | LOCK_EX);
+    }
+
+    /**
+     * 保存数据到临时文件.
+     * 用json格式保存，文件已存在就不处理，如果想重试，必须删除已有文件.
+     * 调用远程接口的时候，接口耗时、调用次数限制、网络不稳定等，可以将调用结果保存为临时文件，避免调试的时候总是调用接口，节省时间.
+     * @param $data
+     * @param string $filenameId
+     */
+    public static function saveTempFile($data, $filenameId='')
+    {
+        $file = self::getTempFile($filenameId);
+
+        if (!file_exists($file))
+        {
+            file_put_contents($file, json_encode($data), LOCK_EX);
+        }
+    }
+
+    /**
+     * 从临时文件获取数据.
+     * @param string $filenameId
+     * @param bool $jsonDecode
+     * @return bool|mixed
+     */
+    public static function getFromTempFile($filenameId='', $jsonDecode=true)
+    {
+        $file = self::getTempFile($filenameId);
+
+        if (!file_exists($file))
+        {
+            return false;
+        }
+
+        return $jsonDecode ? json_decode(file_get_contents($file), true) : file_get_contents($file);
+    }
+
+    /**
+     * 检查临时文件是否可用.
+     * @param string $filenameId
+     * @return bool
+     */
+    public static function isTempFileAvailable($filenameId='')
+    {
+        $file = self::getTempFile($filenameId);
+
+        return file_exists($file);
+    }
+
+    /**
+     * 获取临时文件名.
+     * 默认文件名加上指定的文件ID，方便记录到多个文件.
+     * @param string $filenameId
+     * @return string
+     */
+    public static function getTempFile($filenameId='')
+    {
+        $filenameId = trim($filenameId);
+        return self::getLogPath() . '/' . "DumperLogFileTempFile-{$filenameId}.txt";
+    }
+
+    /**
+     * 获取随机临时文件名.
+     * 调试csv文件下载的时候，想要临时生成csv文件，可以给一个临时文件名结合CsvHelper进行调试.
+     * @return string
+     */
+    public static function getTempFileRand()
+    {
+        return self::getTempFile('Rand-'.rand());
+    }
+}
+
 class D
 {
 	/**
@@ -700,6 +797,30 @@ class D
         }
 
         throw new Exception('A test exception throwed by D component.', $code);
+    }
+
+    /**
+     * 触发一个notice测试错误.
+     */
+    public static function notice()
+    {
+        trigger_error('A notice triggered by D component.', E_USER_NOTICE);
+    }
+
+    /**
+     * 触发一个warning测试错误.
+     */
+    public static function warning()
+    {
+        trigger_error('A warning triggered by D component.', E_USER_WARNING);
+    }
+
+    /**
+     * 触发一个faltal测试错误.
+     */
+    public static function error()
+    {
+        trigger_error('An error triggered by D component.', E_USER_ERROR);
     }
 
     /**
@@ -1181,7 +1302,7 @@ class D
 	 */
 	private static function prefixMessage($content, $highlight=false)
 	{
-        $message = self::generatePrefixMessage();
+        list($message, $position) = self::generatePrefixMessage();
 
 		return $highlight ? '<span class="toggle">' . $position . '#' . $message . '</span> '. $content : $position . '#' . $message . ' ' . $content;
 	}
@@ -1190,14 +1311,8 @@ class D
      * 生成message.
      * @return mixed|string
      */
-	private function generatePrefixMessage()
+	private static function generatePrefixMessage()
     {
-        // 指定名称
-        if (self::$_message != '')
-        {
-            return self::$_message;
-        }
-
         // 调用堆栈
         $d = self::getDebugBacktrace();
 
@@ -1207,9 +1322,15 @@ class D
         // 调用位置
         $position = self::getPositionFromDebugBacktraceRow($v);
 
+        // 指定名称
+        if (self::$_message != '')
+        {
+            return [self::$_message, $position];
+        }
+
         if (empty($v))
         {
-            return "Can't get the arg message.";
+            return ["Can't get the arg message.", $position];
         }
 
         // 预定义函数名
@@ -1225,7 +1346,7 @@ class D
             }
         }
 
-        return $message;
+        return [$message, $position];
     }
 
 	private static function getPositionFromDebugBacktrace()
@@ -1401,7 +1522,8 @@ class D
                 self::pde(func_get_args());
             }else{
                 $position = self::getPositionFromDebugBacktrace();
-			    exit('<pre> '.$position.'# !!! breakpoint !!! </pre>');
+                echo '<pre> '.$position.'# !!! breakpoint !!! </pre>';
+			    exit();
             }
 		}
 	}
@@ -1497,25 +1619,25 @@ class D
             $token = 'profile';
         }
 
-        if(isset(self::$_profile[$token])){
-            $now = microtime(true);
-            $last = self::$_profile[$token];
-            $cost = $now - $last;
-
-            // log cost for compare profile
-            self::$_profile_cost[$token] = $cost;
-            if ($return) {
-                return $cost;
-            } else {
-                // set the message manually
-                self::$_message = 'profile::' . $token;
-                $cost = sprintf('%.9f', $cost);
-                self::log($cost);
-                // should clean the message manually
-                self::$_message = '';
-            }
-        }else{
+        if(!isset(self::$_profile[$token])){
             throw new Exception('Profile token ' . $token . ' is not found.');
+        }
+
+        $now = microtime(true);
+        $last = self::$_profile[$token];
+        $cost = $now - $last;
+
+        // log cost for compare profile
+        self::$_profile_cost[$token] = $cost;
+        if ($return) {
+            return $cost;
+        } else {
+            // set the message manually
+            self::$_message = 'profile::' . $token;
+            $cost = sprintf('%.9f', $cost);
+            self::log($cost);
+            // should clean the message manually
+            self::$_message = '';
         }
     }
 
@@ -1946,49 +2068,51 @@ class D
 	
 	/**
 	 * Reflect a function.
-	 * param string $function 函数名.
-	 @param boolean $highlight 是否高亮打印，true表示是，false表示否，默认是true.
+	 * @param string $function 函数名.
+	 * @param boolean $highlight 是否高亮打印，true表示是，false表示否，默认是true.
+     * @param boolean $log 是否记录到日志文件.
 	 */
-	public static function refF($function, $highhight=true)
+	public static function refF($function, $highhight=true, $log=false)
 	{
 		$object = new ReflectionFunction($function);
 		
 		$name = $function . '()';
-		$info = array(
+		$data = array(
 			'Name'=>$name,
 			'File'=>$object->getFileName(),
 			'Lines'=>'{' . $object->getStartLine() . ', ' . $object->getEndLine() . '}',
 		);
 		self::$_message = 'Function ' . $name;
-		self::pd($info);
+		$log ? self::log($data) : ($highhight ? self::pd($data) : self::pds($data));
 		self::$_message = '';
 	}
 	
 	/**
 	 * 同 {@link refF}，但会终止程序.
 	 */
-	public static function refFe($function, $highhight=true)
+	public static function refFe($function, $highhight=true, $log=false)
 	{
-		exit(self::refF($function, $highhight));
+		exit(self::refF($function, $highhight, $log));
 	}
 	
 	/**
 	 * Reflect a class or object.
 	 * @param mixed $class 类名或者对象.
 	 * @param boolean $highlight 是否高亮打印，true表示是，false表示否，默认是true.
+     * @param boolean $log 是否记录到日志文件.
 	 */
-	public static function ref($class, $highlight=true)
+	public static function ref($class, $highlight=true, $log=false)
 	{
 		$data = self::refExplodeInternal($class);
-		$highlight ? self::pd($data) : self::pds($data);
+		$log ? self::log($data) : ($highhight ? self::pd($data) : self::pds($data));
 	}
 	
 	/**
 	 * 同 {@link ref}，但会终止程序.
 	 */
-	public static function refe($class, $highhight=true)
+	public static function refe($class, $highhight=true, $log=false)
 	{
-		exit(self::ref($class, $highhight));
+		exit(self::ref($class, $highhight, $log));
 	}
 
     private static function refExplodeInternal($class)
@@ -2424,16 +2548,25 @@ class D
         return $row;
     }
 
+    private static $_beginSqlLog = false;
+
+    public static function getBeginSqlLog()
+    {
+        return self::$_beginSqlLog;
+    }
+
     /**
      * Begin the laravel database sql query log. The name s means 'beginSqlLog' for convenience.
      */
-    public static function s()
+    public static function beginSqlLog()
     {
+        self::$_beginSqlLog = true;
+
         self::profile('s_total_profile');
         DB::enableQueryLog();
     }
 
-    public static function sd()
+    public static function endSqlLog3()
     {
         $data = DB::getQueryLog();
         self::$_message = 'query log';
@@ -2444,8 +2577,13 @@ class D
      * End the laravel database sql query log. The name ss means 'endSqlLog' for convenience.
      * @param bool $asString Join the sql as one string when true.
      */
-    public static function ss($asString=false)
+    public static function endSqlLog($asString=false)
     {
+        if (!self::$_beginSqlLog)
+        {
+            return;
+        }
+
         // time total
         $timeTotal = self::profilee('s_total_profile', true);
 
@@ -2482,7 +2620,7 @@ class D
         self::log($content);
     }
 
-    public static function sss()
+    public static function endSqlLog2()
     {
         $data = DB::getQueryLog();
 
@@ -2562,7 +2700,8 @@ class D
     {
         $html = '<div><ul>';
         foreach ($data as $row) {
-            $html .= "<li><a href='{$row['url']}' target='_blank'>{$row['text']}</a></li>";
+            $target = $row['self'] ? "" : "target='_blank'";
+            $html .= "<li><a href='{$row['url']}' {$target}>{$row['text']}</a></li>";
         }
         $html .= '</ul></div>';
 
@@ -2812,4 +2951,116 @@ class D
         self::lastquery($model);
         exit();
     }
+
+    public static function compare($a, $b, $sort=false)
+    {
+        // 有时候可以对数组排序后进行比较
+        if ($sort)
+        {
+            self::sort($a);
+            self::sort($b);
+        }
+
+        // 进行字符串md5比较
+        $a = md5(json_encode($a));
+        $b = md5(json_encode($b));
+
+        return $a == $b;
+    }
+
+    public static function pdCompare($a, $b, $sort=false)
+    {
+        self::$_message = 'compare';
+        self::pd(self::compare($a, $b, $sort));
+        self::$_message = '';
+    }
+
+    public static function pdsCompare($a, $b, $sort=false)
+    {
+        self::$_message = 'compare';
+        self::pds(self::compare($a, $b, $sort));
+        self::$_message = '';
+    }
+
+    public static function logCompare($a, $b, $sort=false)
+    {
+        self::$_message = 'compare';
+        self::log(self::compare($a, $b, $sort));
+        self::$_message = '';
+    }
+
+    public static function yiiCollectArData($data)
+    {
+        // 不可遍历就退出
+        if (!is_array($data) && !is_iterable($data))
+        {
+            return $data;
+        }
+
+        // 遍历获取ar的attributes
+        foreach ($data as $index => $item)
+        {
+            // 是ar就获取attributes
+            if ($item instanceof CActiveRecord)
+            {
+                $item = $item->attributes;
+            }
+
+            // 获取的attributes元素可能也是ar或者ar数组
+            if (is_array($item))
+            {
+                $item = self::yiiCollectArData($item);
+            }
+
+            $data[$index] = $item;
+        }
+
+        return $data;
+    }
+
+    private static $_stop_on_count = 0;
+
+    public static function stopOnCount($count)
+    {
+        if (self::$_stop_on_count >= $count)
+        {
+            self::$_stop_on_count = 0;
+
+            return true;
+        }
+
+        self::$_stop_on_count++;
+
+        return false;
+    }
+
+    public static function displayAllError()
+    {
+        ini_set('display_errors', 1);
+        error_reporting(E_ALL);
+    }
+
+    public static function echo()
+    {
+        self::echoInternal(func_get_args());
+    }
+
+    public static function echoHtml()
+    {
+        self::echoInternal(func_get_args(), true);
+    }
+
+    private static function echoInternal($data, $html=false)
+    {
+        $breakLine = $html ? '<br/>' : "\n";
+        if (!empty($data))
+        {
+            echo implode('-', $data) . $breakLine;
+        }
+        else
+        {
+            echo 'echo by D: rand=' . rand() . $breakLine;
+        }
+    }
+
 }
