@@ -621,7 +621,7 @@ class D
     private static $_profile = [];
     private static $_profile_cost = [];
     private static $_first_log = false;
-    private static $_no_clean = false;
+    private static $_no_clean = true;
     private static $_shutdownLog = [];
     private static $_line_chars = ['-', '=', '*', '!', '#', '@', '$', '%', '^', '&', '<', '>'];
     private static $_line_char_index = 0;
@@ -827,32 +827,49 @@ class D
      * Sort the array.
      * @param $array
      * @param $sort
+     * @param $sortAssoc
      * @param $sortByKey
-     * $param $sortByRecurse
+     * @param $sortByRecurse
+     * @param $natsort
      */
-    public static function sort(&$array, $sort=self::SORT_ASC, $sortByKey=true, $sortByRecurse=true)
+    public static function sort(&$array, $sort=self::SORT_ASC, $sortAssoc=false, $sortByKey=false, $sortByRecurse=false, $natsort=false)
     {
-        // Sort by key or value
-        if ($sortByKey)
+        // Sort an array and maintain index association
+        if ($sortAssoc)
         {
             if ($sort == self::SORT_ASC)
             {
-                ksort($array);
+                asort($array);
             }
             elseif ($sort == self::SORT_DESC)
             {
-                krsort($array);
+                arsort($array);
             }
         }
         else
         {
-            if ($sort == self::SORT_ASC)
+            // Sort by key or value
+            if ($sortByKey)
             {
-                sort($array);
+                if ($sort == self::SORT_ASC)
+                {
+                    ksort($array);
+                }
+                elseif ($sort == self::SORT_DESC)
+                {
+                    krsort($array);
+                }
             }
-            elseif ($sort == self::SORT_DESC)
+            else
             {
-                rsort($array);
+                if ($sort == self::SORT_ASC)
+                {
+                    sort($array);
+                }
+                elseif ($sort == self::SORT_DESC)
+                {
+                    rsort($array);
+                }
             }
         }
 
@@ -866,7 +883,7 @@ class D
                     continue;
                 }
 
-                self::sort($item, $sort, $sortByKey, $sortByRecurse);
+                self::sort($item, $sort, $sortAssoc, $sortByKey, $sortByRecurse, $natsort);
             }
         }
     }
@@ -2363,7 +2380,6 @@ class D
         $array = rtrim($array, ",");
         $array = "[" . $array . "]";
         $res = self::eval($array);
-        \D::log($res, $lines);
     }
 
     // 转换数组到likearray格式
@@ -3020,16 +3036,24 @@ class D
 
     private static $_stop_on_count = 0;
 
-    public static function stopOnCount($count)
+    public static function stopOnCount($count, $exit=true)
     {
+        self::$_stop_on_count++;
+
         if (self::$_stop_on_count >= $count)
         {
             self::$_stop_on_count = 0;
 
+            // 直接退出
+            if ($exit)
+            {
+                exit();
+            }
+
+            // 让调用者自己决定如何处理
+            // 例如在循环里调用，可能只是需要break
             return true;
         }
-
-        self::$_stop_on_count++;
 
         return false;
     }
