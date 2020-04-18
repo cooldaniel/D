@@ -2089,7 +2089,7 @@ class D
 	 * @param boolean $highlight 是否高亮打印，true表示是，false表示否，默认是true.
      * @param boolean $log 是否记录到日志文件.
 	 */
-	public static function refF($function, $highhight=true, $log=false)
+	public static function refF($function, $highlight=true, $log=false)
 	{
 		$object = new ReflectionFunction($function);
 		
@@ -2100,16 +2100,16 @@ class D
 			'Lines'=>'{' . $object->getStartLine() . ', ' . $object->getEndLine() . '}',
 		);
 		self::$_message = 'Function ' . $name;
-		$log ? self::log($data) : ($highhight ? self::pd($data) : self::pds($data));
+		$log ? self::log($data) : ($highlight ? self::pd($data) : self::pds($data));
 		self::$_message = '';
 	}
 	
 	/**
 	 * 同 {@link refF}，但会终止程序.
 	 */
-	public static function refFe($function, $highhight=true, $log=false)
+	public static function refFe($function, $highlight=true, $log=false)
 	{
-		exit(self::refF($function, $highhight, $log));
+		exit(self::refF($function, $highlight, $log));
 	}
 	
 	/**
@@ -2121,15 +2121,15 @@ class D
 	public static function ref($class, $highlight=true, $log=false)
 	{
 		$data = self::refExplodeInternal($class);
-		$log ? self::log($data) : ($highhight ? self::pd($data) : self::pds($data));
+		$log ? self::log($data) : ($highlight ? self::pd($data) : self::pds($data));
 	}
 	
 	/**
 	 * 同 {@link ref}，但会终止程序.
 	 */
-	public static function refe($class, $highhight=true, $log=false)
+	public static function refe($class, $highlight=true, $log=false)
 	{
-		exit(self::ref($class, $highhight, $log));
+		exit(self::ref($class, $highlight, $log));
 	}
 
     private static function refExplodeInternal($class)
