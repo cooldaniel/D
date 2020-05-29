@@ -626,6 +626,7 @@ class D
     private static $_line_chars = ['-', '=', '*', '!', '#', '@', '$', '%', '^', '&', '<', '>'];
     private static $_line_char_index = 0;
     private static $_yiiLogSql = false;
+    private static $_yiiLogUseSqlLogFile = false;
 
     public static function setMessage($message)
     {
@@ -642,12 +643,17 @@ class D
         self::$_yiiLogSql = (bool)$enable;
     }
 
-    public static function yiiLogSql($cmd, $par, $useSqlLogFile=false)
+    public static function yiiLogUseSqlLogFile($use=false)
+    {
+        self::$_yiiLogUseSqlLogFile = $use;
+    }
+
+    public static function yiiLogSql($cmd, $par)
     {
         if (\D::getYiiLogSql())
         {
             // 使用sql文件记录
-            if ($useSqlLogFile)
+            if (self::$_yiiLogUseSqlLogFile)
             {
                 \D::setLogFileName('DumperLogFile_sql.ig.txt');
             }
@@ -662,13 +668,45 @@ class D
             \D::setMessage('');
 
             // 恢复原来的记录文件
-            if ($useSqlLogFile)
+            if (self::$_yiiLogUseSqlLogFile)
             {
                 \D::setLogFileName('DumperLogFile.ig.txt');
             }
         }
     }
 
+    public static function yiiLogSql2($cmd)
+    {
+        if (\D::getYiiLogSql())
+        {
+            // 使用sql文件记录
+            if (self::$_yiiLogUseSqlLogFile)
+            {
+                \D::setLogFileName('DumperLogFile_sql.ig.txt');
+            }
+
+            // 获取sql和trace
+            $sql = "\n\n".$cmd->getRawSql()."\n";
+            $sql .= "\n" . \D::getTrace() . "\n";
+
+            // 记录sql
+            \D::setMessage('sql');
+            \D::log($sql);
+            \D::setMessage('');
+
+            // 恢复原来的记录文件
+            if (self::$_yiiLogUseSqlLogFile)
+            {
+                \D::setLogFileName('DumperLogFile.ig.txt');
+            }
+        }
+    }
+
+    /**
+     * 设置日志文件名.
+     * @param $filename
+     * @throws Exception
+     */
     public static function setLogFileName($filename)
     {
         if (strpos('/', $filename) !== false || strpos('\\', $filename) !== false)
@@ -903,7 +941,7 @@ class D
 	{
 		self::pdsInternal(func_get_args());
 	}
-	
+
 	/**
 	 * 打印参数并将结果记录到文件中.
 	 */
@@ -2212,7 +2250,7 @@ class D
         if ($header){
             header('Content-Type:application/json; Charset=utf-8;');
         }
-        echo json_encode($data, JSON_UNESCAPED_UNICODE & JSON_UNESCAPED_SLASHES);
+        echo json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT);
     }
 
     public static function jsone($data, $header=false)
@@ -2220,7 +2258,7 @@ class D
         if ($header){
             header('Content-Type:application/json; Charset=utf-8;');
         }
-        echo json_encode($data, JSON_UNESCAPED_UNICODE & JSON_UNESCAPED_SLASHES);
+        echo json_encode($data, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRETTY_PRINT);
         exit;
     }
 
@@ -2262,19 +2300,23 @@ class D
         curl_setopt($ch, CURLOPT_STDERR , $hd);
     }
 
-    public static function curlArray($url, $params = [], $post=false)
+    public static function curlArray($url, $params = [], $post=false, $curlOptions=[], $https=false)
     {
-        return self::curl($url, $params, $post, true);
+        return self::curl($url, $params, $post, true, $curlOptions, $https);
     }
 
     /**
-     * @param $url 请求网址
+     * @param string $url 请求网址
      * @param array $params 请求参数
      * @param bool $post 请求方式
+     * @param bool $returnArray 是否以数组方式返回结果
+     * @param array $curlOptions curl选项
      * @param bool $https https协议
+     * @param bool $highlight
+     * @param bool $log
      * @return bool|mixed
      */
-    public static function curl($url, $params = [], $post=false, $returnArray=false, $curlOptions=[], $https=false)
+    public static function curl($url, $params = [], $post=false, $returnArray=false, $curlOptions=[], $https=false, $highlight=true, $log=false)
     {
         $ch = curl_init();
 
@@ -2312,12 +2354,13 @@ class D
         if ($response === false) {
 
             self::$_message = 'D::curl() curl error';
-            D::pd(array(
+            $errors = array(
                 'curl_errno'=>curl_errno($ch),
                 'curl_error'=>curl_error($ch),
                 'http_code'=>curl_getinfo($ch, CURLINFO_HTTP_CODE),
                 'http_info'=>curl_getinfo($ch),
-            ));
+            );
+            $log ? self::log($errors) : ($highlight ? self::pd($errors) : self::pds($errors));
             self::$_message = '';
 
             curl_close($ch);
@@ -2331,11 +2374,12 @@ class D
             $res = @json_decode($response, true);
             if (!$res) {
                 self::$_message = 'D::curl() json error';
-                D::pd(array(
+                $errors = array(
                     'json_last_error'=>json_last_error(),
                     'json_last_error_msg'=>json_last_error_msg(),
                     'response'=>substr($response, 1, 2048),
-                ));
+                );
+                $log ? self::log($errors) : ($highlight ? self::pd($errors) : self::pds($errors));
                 self::$_message = '';
 
             } else {
@@ -3086,5 +3130,5 @@ class D
             echo 'echo by D: rand=' . rand() . $breakLine;
         }
     }
-
+    
 }
