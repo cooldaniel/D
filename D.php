@@ -596,28 +596,29 @@ class DTempFile
 
 class D
 {
-	/**
-	 * 用于 {@link iconv} 的转换编码.
-	 */
-	const UTF8 = 1;
-	const GBK = 2;
+    /**
+     * 用于 {@link iconv} 的转换编码.
+     */
+    const UTF8 = 1;
+    const GBK = 2;
     const LINE = '------------------------------------------------------------------';
 
     const SORT_ASC = 1;
     const SORT_DESC = 2;
 
-	private static $_logPath;
-	private static $_logFileName;
-	private static $_iconv = null;
-	private static $_message = '';
-	private static $_arg_pos = 0;
-	private static $_args = array();
-	private static $_closed = false;
-	private static $_clear = false;
-	private static $_asa = false;
-	private static $_js_included = false;
+    private static $_logPath;
+    private static $_logFileName;
+    private static $_logFileNameDefault = 'DumperLogFile.ig.txt';
+    private static $_iconv = null;
+    private static $_message = '';
+    private static $_arg_pos = 0;
+    private static $_args = array();
+    private static $_closed = false;
+    private static $_clear = false;
+    private static $_asa = false;
+    private static $_js_included = false;
     private static $_positions = array();
-    private static $_pds_exception=false;
+    private static $_pds_exception = false;
     private static $_profile = [];
     private static $_profile_cost = [];
     private static $_first_log = false;
@@ -638,66 +639,60 @@ class D
         return self::$_yiiLogSql;
     }
 
-    public static function enableYiiLogSql($enable=true)
+    public static function enableYiiLogSql($enable = true)
     {
         self::$_yiiLogSql = (bool)$enable;
     }
 
-    public static function yiiLogUseSqlLogFile($use=false)
+    public static function yiiLogUseSqlLogFile($use = false)
     {
         self::$_yiiLogUseSqlLogFile = $use;
     }
 
     public static function yiiLogSql($cmd, $par)
     {
-        if (\D::getYiiLogSql())
-        {
+        if (self::getYiiLogSql()) {
             // 使用sql文件记录
-            if (self::$_yiiLogUseSqlLogFile)
-            {
-                \D::setLogFileName('DumperLogFile_sql.ig.txt');
+            if (self::$_yiiLogUseSqlLogFile) {
+                self::setLogFileName('DumperLogFile_sql.ig.txt');
             }
 
             // 获取sql和trace
-            $sql = "\n\n".$cmd->getText().$par."\n";
-            $sql .= "\n" . \D::getTrace() . "\n";
+            $sql = "\n\n" . $cmd->getText() . $par . "\n";
+            $sql .= "\n" . self::getTrace() . "\n";
 
             // 记录sql
-            \D::setMessage('sql');
-            \D::log($sql);
-            \D::setMessage('');
+            self::setMessage('sql');
+            self::log($sql);
+            self::setMessage('');
 
             // 恢复原来的记录文件
-            if (self::$_yiiLogUseSqlLogFile)
-            {
-                \D::setLogFileName('DumperLogFile.ig.txt');
+            if (self::$_yiiLogUseSqlLogFile) {
+                self::logToDefault();
             }
         }
     }
 
     public static function yiiLogSql2($cmd)
     {
-        if (\D::getYiiLogSql())
-        {
+        if (self::getYiiLogSql()) {
             // 使用sql文件记录
-            if (self::$_yiiLogUseSqlLogFile)
-            {
-                \D::setLogFileName('DumperLogFile_sql.ig.txt');
+            if (self::$_yiiLogUseSqlLogFile) {
+                self::setLogFileName('DumperLogFile_sql.ig.txt');
             }
 
             // 获取sql和trace
-            $sql = "\n\n".$cmd->getRawSql()."\n";
-            $sql .= "\n" . \D::getTrace() . "\n";
+            $sql = "\n\n" . $cmd->getRawSql() . "\n";
+            $sql .= "\n" . self::getTrace() . "\n";
 
             // 记录sql
-            \D::setMessage('sql');
-            \D::log($sql);
-            \D::setMessage('');
+            self::setMessage('sql');
+            self::log($sql);
+            self::setMessage('');
 
             // 恢复原来的记录文件
-            if (self::$_yiiLogUseSqlLogFile)
-            {
-                \D::setLogFileName('DumperLogFile.ig.txt');
+            if (self::$_yiiLogUseSqlLogFile) {
+                self::logToDefault();
             }
         }
     }
@@ -709,12 +704,33 @@ class D
      */
     public static function setLogFileName($filename)
     {
-        if (strpos('/', $filename) !== false || strpos('\\', $filename) !== false)
-        {
+        if (strpos('/', $filename) !== false || strpos('\\', $filename) !== false) {
             throw new \Exception('D::logFile不能包含斜杠和反斜杠');
         }
 
         self::$_logFileName = $filename;
+    }
+
+    public static function logTo($filename)
+    {
+        self::setLogFileName($filename);
+    }
+
+    public static function logToDefault()
+    {
+        self::setLogFileName(self::$_logFileNameDefault);
+    }
+
+    public static function logToOther($num)
+    {
+        $parts = explode('.', self::$_logFileNameDefault);
+        $res = [
+            $parts[0] . "-{$num}",
+            $parts[1],
+            $parts[2],
+        ];
+        $fileName = implode('.', $res);
+        self::setLogFileName($fileName);
     }
 
     /**
@@ -1195,7 +1211,7 @@ class D
     {
         if (empty(self::$_logFileName))
         {
-            $file = self::getLogPath() . '/DumperLogFile.ig.txt';
+            $file = self::getLogPath() . '/' . self::$_logFileNameDefault;
         }
         else
         {
@@ -1577,7 +1593,7 @@ class D
                 self::pde(func_get_args());
             }else{
                 $position = self::getPositionFromDebugBacktrace();
-                echo '<pre> '.$position.'# !!! breakpoint !!! </pre>';
+                echo "<pre> {$position}# !!! breakpoint !!! </pre>\n";
 			    exit();
             }
 		}
@@ -1588,7 +1604,8 @@ class D
 		if (!self::$_closed)
 		{
             $position = self::getPositionFromDebugBacktrace();
-			echo '<pre> '.$position.'# ~~~ footprint - '.rand().' ~~~ </pre>';
+            $rand = rand();
+            echo "<pre> {$position}# ~~~ footprint - {$rand} ~~~ </pre>\n";
 		}
 	}
 
@@ -1597,7 +1614,8 @@ class D
         if (!self::$_closed)
 		{
             $position = self::getPositionFromDebugBacktrace();
-			echo '<pre> '.$position.'# ~~~ done - '.rand().' ~~~ </pre>';
+            $rand = rand();
+			echo "<pre> {$position}# ~~~ done - {$rand} ~~~ </pre>\n";
 		}
     }
 
@@ -2543,6 +2561,19 @@ class D
         }
     }
 
+    public static function lines($log=false, $title='')
+    {
+        if ($title !== '') {
+            $title = ' ' . $title . ' ';
+        }
+        $res = str_repeat('-', 50) . $title . str_repeat('-', 50);
+        if ($log) {
+            self::log($res);
+        } else {
+            echo "$res\n";
+        }
+    }
+
     /**
      * 将数据转成数组格式.
      * 用于在使用laravel框架式，针对collection和model等存储数据的数据对象收集成数组，方便记录到日志查看.
@@ -2829,7 +2860,14 @@ class D
 
     public static function table($data, $return=false)
     {
-        $html = '<table>';
+        $html = '';
+        $html .= '
+        <style>
+.d-dump-table{border: 1px solid #CCCCCC; border-collapse: collapse; margin: 16px;}
+.d-dump-table td, .d-dump-table th{border: 1px solid #CCCCCC; padding: 8px 20px;}
+</style>
+        ';
+        $html .= '<table class="d-dump-table">';
 
         // header
         $html .= '<thead>';
@@ -2844,11 +2882,13 @@ class D
             $keyList = array_keys($data);
         }
 
+        $html .= '<tr>';
         foreach ($keyList as $item) {
             $html .= '<th>';
             $html .= $item;
             $html .= '</th>';
         }
+        $html .= '</tr>';
 
         $html .= '</thead>';
 
@@ -2857,6 +2897,7 @@ class D
 
         foreach ($data as $row) {
 
+            $html .= '<tr>';
             if ($multi) {
                 foreach ($row as $item) {
                     self::tableTd($html, $item);
@@ -2864,8 +2905,8 @@ class D
             } else {
                 self::tableTd($html, $row);
             }
+            $html .= '</tr>';
         }
-
         $html .= '</tbody>';
         $html .= '</table>';
 
@@ -2984,11 +3025,15 @@ class D
         return "'" . implode("','", $array) . "'";
     }
 
-    public static function yiisql($model)
+    public static function yiisql($model, $dump=false, $html=false)
     {
         self::$_message = 'yiisql';
         $sql = $model->createCommand()->getRawSql();
-        self::logSql($sql);
+        if ($dump) {
+            $html ? self::pd($sql) : self::pds($sql);
+        } else {
+            self::logSql($sql);
+        }
         self::$_message = '';
         return $sql;
     }
