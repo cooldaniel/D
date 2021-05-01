@@ -628,6 +628,12 @@ class D
     private static $_line_char_index = 0;
     private static $_yiiLogSql = false;
     private static $_yiiLogUseSqlLogFile = false;
+    private static $_ignore_message=false;
+
+    public static function ignoreMessage($ignore=true)
+    {
+        self::$_ignore_message = (bool)$ignore;
+    }
 
     public static function setMessage($message)
     {
@@ -1186,11 +1192,17 @@ class D
 				
 				self::$_arg_pos = 0;
 				foreach ($args as $arg)
-				{
-				    $content = self::pdo($arg);
-				
-					$content = self::prefixMessage($content);
-					$content = self::msecDate(null, true) . ' ' . $content;
+                {
+                    // 有时候为了方便直接使用记录的文本，不想加前缀信息，可以跳过
+				    if (self::$_ignore_message) {
+                        self::$_skip_pdo = true;
+                        $content = self::pdo($arg);
+                    } else {
+                        $content = self::pdo($arg);
+                        $content = self::prefixMessage($content);
+                        $content = self::msecDate(null, true) . ' ' . $content;
+                    }
+
 					$content = self::iconv($content);
 
                     self::logSaveToFile($content);
@@ -2864,7 +2876,7 @@ class D
         $html .= '
         <style>
 .d-dump-table{border: 1px solid #CCCCCC; border-collapse: collapse; margin: 16px;}
-.d-dump-table td, .d-dump-table th{border: 1px solid #CCCCCC; padding: 8px 20px;}
+.d-dump-table td, .d-dump-table th{border: 1px solid #CCCCCC; padding: 3px 20px;}
 </style>
         ';
         $html .= '<table class="d-dump-table">';
@@ -3035,7 +3047,6 @@ class D
             self::logSql($sql);
         }
         self::$_message = '';
-        return $sql;
     }
 
     public static function formatTime($time, $format='Y-m-d H:i:s')
