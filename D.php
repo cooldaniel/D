@@ -3049,6 +3049,19 @@ class D
         self::$_message = '';
     }
 
+    public static function yiisqlc($model, $dump=false, $html=false)
+    {
+        self::logc();
+        self::yiisql($model, $dump, $html);
+    }
+
+    public static function yiisqlce($model, $dump=false, $html=false)
+    {
+        self::logc();
+        self::yiisql($model, $dump, $html);
+        exit();
+    }
+
     public static function formatTime($time, $format='Y-m-d H:i:s')
     {
         return date($format, $time);
