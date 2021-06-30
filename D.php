@@ -2872,11 +2872,20 @@ class D
 
     public static function table($data, $return=false)
     {
+        if (!$data) {
+            $html = '<div>没有找到记录</div>';
+            if ($return) {
+                return $html;
+            } else {
+                echo $html;
+            }
+        }
+
         $html = '';
         $html .= '
         <style>
 .d-dump-table{border: 1px solid #CCCCCC; border-collapse: collapse; margin: 16px;}
-.d-dump-table td, .d-dump-table th{border: 1px solid #CCCCCC; padding: 3px 20px;}
+.d-dump-table td, .d-dump-table th{border: 1px solid #CCCCCC; padding: 3px 20px; font-size: 12px; padding: 3px 12px;}
 </style>
         ';
         $html .= '<table class="d-dump-table">';
@@ -3062,6 +3071,51 @@ class D
         exit();
     }
 
+    public static function yiiCheckDataBySql($text)
+    {
+        $block_list = explode(';', $text);
+
+        echo '<div style="font-size: 12px; margin: 30px;">';
+        echo '<h1>Yii check data by sql</h1>';
+
+        $num = 0;
+        foreach ($block_list as $index => $block) {
+
+            $block = trim($block);
+
+            if ($block === '') {
+                continue;
+            }
+
+            // 总是假设用SELECT *开始一个sql
+            // 子查询里总是SELECT单个字段，所以这种拆分方式可行
+            // 拆分后要给sql补回去
+            $parts = explode('SELECT *', $block);
+            $title = trim($parts[0]);
+            $sql = 'SELECT * ' . trim($parts[1]);
+
+            $num++;
+
+            // 没写标题就用sql做标题
+            if (!$title) {
+                $title = $sql;
+            }
+
+            // 显示标题
+            $title = str_replace('# ', '', $title);
+            echo "<h3 style=\"margin-top:30px;\">{$num}. {$title}</h3>";
+
+            // 先显示sql：sql执行可能出错
+            echo "<div>{$sql}</div>";
+
+            // 显示结果
+            $res = \Yii::$app->db->createCommand($sql)->queryAll();
+            \D::table($res);
+        }
+        
+        echo '</div>';
+    }
+
     public static function formatTime($time, $format='Y-m-d H:i:s')
     {
         return date($format, $time);
@@ -3199,5 +3253,35 @@ class D
             echo 'echo by D: rand=' . rand() . $breakLine;
         }
     }
-    
+
+    public static function apidocRequest($data)
+    {
+        $res = [];
+        $res[] = "##### 参数\n";
+        $res[] = '|参数名|必选|类型|说明|';
+        $res[] = '|:-----|:-----|:-----|-----|';
+        foreach ($data as $column => $item) {
+            $parts = explode('|', $item);
+            $required = ($parts[0] == 'true') ? '是' : '否';
+            $res[] = "|{$column}  |{$required}}  |{$parts[1]}  |{$parts[2]}  |";
+        }
+        $res = "\n\n".implode("\n", $res)."\n\n";
+
+        self::log($res);
+    }
+
+    public static function apidocResponse($data)
+    {
+        $res = [];
+        $res[] = "##### 返回参数说明\n";
+        $res[] = '|参数名|类型|说明|';
+        $res[] = '|:-----|:-----|-----|';
+        foreach ($data as $column => $item) {
+            $parts = explode('|', $item);
+            $res[] = "|{$column}  |{$parts[0]}  |{$parts[1]}  |";
+        }
+        $res = "\n\n".implode("\n", $res)."\n\n";
+
+        self::log($res);
+    }
 }
