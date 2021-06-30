@@ -3106,7 +3106,7 @@ class D
             echo "<h3 style=\"margin-top:30px;\">{$num}. {$title}</h3>";
 
             // 先显示sql：sql执行可能出错
-            echo "<div>{$sql}</div>";
+            echo "<div style=\"padding-left:20px;\">{$sql}</div>";
 
             // 显示结果
             $res = \Yii::$app->db->createCommand($sql)->queryAll();
