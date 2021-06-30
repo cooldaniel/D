@@ -3112,8 +3112,14 @@ class D
             $res = \Yii::$app->db->createCommand($sql)->queryAll();
             \D::table($res);
         }
-        
+
         echo '</div>';
+    }
+
+    public static function yiiCheckDataBySqle($text)
+    {
+        self::yiiCheckDataBySql($text);
+        exit();
     }
 
     public static function formatTime($time, $format='Y-m-d H:i:s')
