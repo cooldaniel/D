@@ -1748,13 +1748,15 @@ class D
         self::log(array('diff'=>$diff, 'percent'=>$percent));
     }
 	
-	public static function count($items)
+	public static function count($items, $highlight=true, $log=false)
 	{
-		self::pd(count($items));
+	    $count = count($items);
+	    $log ? self::log($count) : ($highlight ? self::pd($count) : self::pds($count));
 	}
-	public static function counte($items)
+	public static function counte($items, $highlight=true, $log=false)
 	{
-		self::pde(count($items));
+		self::count($items, $highlight, $log);
+		exit();
 	}
 	
 	public static function rand($slight=false)
@@ -1847,7 +1849,7 @@ class D
     }
     public static function igete($name){self::pde(ini_get($name));}
 
-	public static function usage($log=false, $string=false)
+	public static function usage($log=false, $string=false, $return=false)
 	{
         $k = 1024;
 		$m = 1024 * 1024;
@@ -1872,6 +1874,10 @@ class D
                 'string_usage'=>array('B'=>$u, 'K'=>$u/$k, 'M'=>$u/$m),
                 'memory_limit'=>ini_get('memory_limit'),
             );
+        }
+
+        if ($return) {
+            return $usage;
         }
 
 		$log ? D::log($usage) : D::pd($usage);
