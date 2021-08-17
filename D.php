@@ -2356,6 +2356,19 @@ class D
         curl_setopt($ch, CURLOPT_TIMEOUT, 30);
         curl_setopt($ch, CURLOPT_RETURNTRANSFER, true);
 
+        $options = [
+//            CURLOPT_USERAGENT      => 'Yii Framework ' . Yii::getVersion() . ' ' . __CLASS__,
+//            CURLOPT_RETURNTRANSFER => false,
+//            CURLOPT_HEADER         => false,
+            // http://www.php.net/manual/en/function.curl-setopt.php#82418
+            CURLOPT_HTTPHEADER     => [
+                'Expect:',
+                'Content-Type: application/json',
+            ],
+        ];
+
+        curl_setopt_array($ch, $options);
+
         if ($https) {
             curl_setopt($ch, CURLOPT_SSL_VERIFYPEER, FALSE); // 对认证证书来源的检查
             curl_setopt($ch, CURLOPT_SSL_VERIFYHOST, FALSE); // 从证书中检查SSL加密算法是否存在
@@ -2366,14 +2379,16 @@ class D
                 curl_setopt($ch, $option, $value);
             }
         }
+        curl_setopt($ch, CURLOPT_POSTFIELDS, $params);
+        curl_setopt($ch, CURLOPT_URL, $url);
 
         if ($post) {
             curl_setopt($ch, CURLOPT_POST, true);
-            curl_setopt($ch, CURLOPT_POSTFIELDS, $params);
+
             curl_setopt($ch, CURLOPT_URL, $url);
         } else {
             if (!empty($params) && is_array($params)) {
-                curl_setopt($ch, CURLOPT_URL, $url . '?' . http_build_query($params));
+               // curl_setopt($ch, CURLOPT_URL, $url . '?' . http_build_query($params));
             } else {
                 curl_setopt($ch, CURLOPT_URL, $url);
             }
