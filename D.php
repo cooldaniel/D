@@ -2870,14 +2870,14 @@ class D
         self::$_shutdownLog[] = $data;
     }
 
-    public static function tableList($data, $return=false)
+    public static function tableList($data, $keyList=[], $return=false)
     {
         $html = '<div>';
 
         foreach ($data as $title => $list) {
             $html .= '<div>';
             $html .= '<h3>';
-            $html .= self::table($list, true);
+            $html .= self::table($list, $keyList, true);
             $html .= '</h3>';
             $html .= '</div>';
         }
@@ -2891,7 +2891,7 @@ class D
         }
     }
 
-    public static function table($data, $return=false)
+    public static function table($data, $keyList=[], $return=false)
     {
         if (!$data) {
             $html = '<div>没有找到记录</div>';
@@ -2916,12 +2916,14 @@ class D
 
         $multi = is_array(pos($data));
 
-        if ($multi) {
-            // 多维数组
-            $keyList = array_keys(pos($data));
-        } else {
-            // 一维数组
-            $keyList = array_keys($data);
+        if (!$keyList) {
+            if ($multi) {
+                // 多维数组
+                $keyList = array_keys(pos($data));
+            } else {
+                // 一维数组
+                $keyList = array_keys($data);
+            }
         }
 
         $html .= '<tr>';
