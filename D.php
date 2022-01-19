@@ -167,7 +167,11 @@ class QueryLog
 
             // explain the select sql
             $row['explain'] = [];
-            $explainList = \DB::select('explain '.$row['replace']);
+            try {
+                $explainList = \DB::select('explain '.$row['replace']);
+            } catch (\Exception $e) {
+                $explainList = [];
+            }
             foreach ($explainList as $explain) {
                 $explainString = '';
                 foreach ($explain as $attribute => $value) {
@@ -2737,7 +2741,9 @@ class D
 
         self::$_message = '$stat';
         $content = '';
-        $content .= "\n\n" . $_SERVER['SERVER_NAME'] . $_SERVER['REQUEST_URI']; // the current request url
+        if (isset($_SERVER['SERVER_NAME'])) {
+            $content .= "\n\n" . $_SERVER['SERVER_NAME'] . $_SERVER['REQUEST_URI']; // the current request url
+        }
         $content .= QueryLog::formatStat($stat); // stat info
         $content .= QueryLog::formatDataToDisplay($data); // sql list
         
@@ -2853,6 +2859,10 @@ class D
     {
         if (!empty(self::$_shutdownLog)) {
             self::log(self::$_shutdownLog);
+        }
+
+        if (self::$_beginSqlLog) {
+            self::endSqlLog();
         }
 
         if (function_exists('DB')) {
@@ -3139,6 +3149,31 @@ class D
         echo '</div>';
     }
 
+    public static $show_table_count = 0;
+    public static function showTable($title, $sql, $data)
+    {
+        self::$show_table_count++;
+        $num = self::$show_table_count;
+
+        echo '<div style="font-size: 12px; margin: 30px;">';
+
+        if ($num == 1) {
+            echo '<h1>Yii check data by sql</h1>';
+        }
+
+        // 显示标题
+        $title = str_replace('# ', '', $title);
+        echo "<h3 style=\"margin-top:30px;\">{$num}. {$title}</h3>";
+
+        // 先显示sql：sql执行可能出错
+        echo "<div style=\"padding-left:20px;\">{$sql}</div>";
+
+        // 显示结果
+        \D::table($data);
+
+        echo '</div>';
+    }
+
     public static function yiiCheckDataBySqle($text)
     {
         self::yiiCheckDataBySql($text);
@@ -3312,5 +3347,13 @@ class D
         $res = "\n\n".implode("\n", $res)."\n\n";
 
         self::log($res);
+    }
+
+    public static function logUrl()
+    {
+        if (isset($_SERVER['REQUEST_URI'])) {
+            $url = $_SERVER['SCRIPT_NAME'] . $_SERVER['REQUEST_URI'];
+            self::log($url);
+        }
     }
 }
