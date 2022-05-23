@@ -860,7 +860,7 @@ class D
             throw $code;
         }
 
-        throw new Exception('A test exception throwed by D component.', $code);
+        throw new Exception("A test exception throwed by D component: code={$code}.", $code);
     }
 
     /**
