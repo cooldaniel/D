@@ -635,6 +635,11 @@ class D
     private static $_ignore_message=false;
     private static $_unfold_count = 25;
 
+    public static function unfold_count($count=0)
+    {
+        self::$_unfold_count = $count;
+    }
+
     public static function ignoreMessage($ignore=true)
     {
         self::$_ignore_message = (bool)$ignore;
