@@ -1,7 +1,7 @@
 <?php
 /**
  * D class file.
- * 
+ *
  * @author Daniel Luo <295313207@qq.com>
  * @copyright Copyright &copy; 2010-2015
  * @version 2.0
@@ -21,7 +21,7 @@ if (!class_exists('SqlFormatter'))
 
 /**
  * 类名D是Dumper的缩写，意指该静态类的功用是打印变量信息。它由一系列的变量打印方法组成：
- * 
+ *
  * 1.打印参数
  * 打印多个参数的时候，使用逗号将参数分隔.
  * D::pd(): Power-dumping with highlight
@@ -33,12 +33,12 @@ if (!class_exists('SqlFormatter'))
  * D::pdse(): D::pds() with exiting
  * D::loge(): D::log() with exiting
  * D::logce(): D::logc() with exiting
- * 
+ *
  * 2.利用反射打印反射对象
  * D::ref()以及它的附加了终止程序执行功能的变形D::refe().
  * 使用 D::pd() 打印对象，输出的是对象的属性值，D::ref() 打印的是类定义信息，两者目的不同。
  * D::refF()及D::refFe(): 打印给定函数的信息.
- * 
+ *
  * 3.打印PHP环境变量
  * D::post(): Dump the $_POST variable
  * D::get(): Dump the $_GET variable
@@ -57,7 +57,7 @@ if (!class_exists('SqlFormatter'))
  * D::filee(): D::file() with exiting
  * D::servere(): D::server() with exiting
  * D::globalse(): D::globals() with exiting
- * 
+ *
  * 4.其它辅助方法
  * D::close(): 关闭D组件
  * D::bk(): 打印断点
@@ -65,11 +65,11 @@ if (!class_exists('SqlFormatter'))
  * D::trace(): 打印程序调用堆栈
  * D::count(): 调用PHP函数 {@link count} 计算数组长度.
  * D::counte() : 同D::count()并终止程序.
- * D::rand(): 调用PHP函数 {@link rand} 打印随机数. 
+ * D::rand(): 调用PHP函数 {@link rand} 打印随机数.
  * D::rande(): 同D::rande()并终止程序.
  * D::rp(): 调用PHP函数 {@link realpath} 打印其结果.
  * D::args(): 打印当前函数的参数列表.
- * 
+ *
  * @todo 目前来讲，因为内部处理仅仅涉及英文字符，所以不会出现中文处理乱码问题。
  * 如果能实现内部字符集编码则更好。但是，因为该类的内部处理工作很少，而且基本不变，
  * 不会涉及中文，所以，实现内部字符集编码没实际必要。
@@ -633,6 +633,7 @@ class D
     private static $_yiiLogSql = false;
     private static $_yiiLogUseSqlLogFile = false;
     private static $_ignore_message=false;
+    private static $_unfold_count = 25;
 
     public static function ignoreMessage($ignore=true)
     {
@@ -788,7 +789,7 @@ class D
 	{
 		self::$_closed = !$reverse;
 	}
-	
+
 	/**
 	 * 设置是否打印为数组.
 	 */
@@ -804,7 +805,7 @@ class D
     {
         self::$_iconv = self::GBK;
     }
-	
+
 	/**
 	 * 设置字符集.
 	 */
@@ -951,7 +952,7 @@ class D
             }
         }
     }
-	
+
 	/**
 	 * 高亮打印参数.
 	 */
@@ -959,7 +960,7 @@ class D
 	{
 		self::pdInternal(func_get_args());
 	}
-	
+
 	/**
 	 * 直接打印参数.
 	 */
@@ -986,7 +987,7 @@ class D
 
 		self::logInternal(func_get_args());
 	}
-	
+
 	/**
 	 * 同 {@link log}，但会清空文件原有内容.
 	 */
@@ -995,7 +996,7 @@ class D
 		self::$_clear = true;
 		self::logInternal(self::initLogcDefaultArgs(func_get_args()));
 	}
-	
+
 	/**
 	 * 同 {@link pd}，但会终止程序.
 	 */
@@ -1003,7 +1004,7 @@ class D
 	{
 		self::pdInternal(func_get_args(), true);
 	}
-	
+
 	/**
 	 * 同 {@link pds}，但会终止程序.
 	 */
@@ -1011,7 +1012,7 @@ class D
 	{
 		self::pdsInternal(func_get_args(), true);
 	}
-	
+
 	/**
 	 * 同 {@link log}，但会终止程序.
 	 */
@@ -1030,7 +1031,7 @@ class D
 
 		self::logInternal(func_get_args(), true);
 	}
-	
+
 	/**
 	 * 同 {@link logc}，但会终止程序.
 	 */
@@ -1039,7 +1040,7 @@ class D
 		self::$_clear = true;
 		self::logInternal(self::initLogcDefaultArgs(func_get_args()), true);
 	}
-	
+
 	/**
 	 * 内部调用方法，用于打印前初始化被打印参数列表.
 	 * @params array $args 被打印的参数列表数组.
@@ -1067,7 +1068,7 @@ class D
             return $args;
         }
     }
-	
+
 	/**
 	 * 内部调用方法，打印参数并高亮显示输出.
 	 * @param array $args 要打印的参数列表数组.
@@ -1079,7 +1080,7 @@ class D
 		if (!self::$_closed)
 		{
 			self::initArgs($args);
-			
+
 			self::$_arg_pos = 0;
 			foreach ($args as $arg)
 			{
@@ -1091,18 +1092,18 @@ class D
 				// 过滤掉最外层 PHP 开始和结束标签
 				$content = substr_replace($content, '', strpos($content, '<br />'), strlen('<br />'));
 				$content = substr_replace($content, '', strpos($content, '&lt;?php<br />'), strlen('&lt;?php<br />'));
-				
+
 				// 默认只显示
 				$lines = explode("<br />", $content);
-				if (count($lines) > 25)
+				if (self::$_unfold_count && count($lines) > self::$_unfold_count)
 				{
 					$content = str_replace('<code>', '<code class="hide">', $content);
 				}
-				
+
 				$content = self::prefixMessage($content, true);
 				$content = '<div>' . $content . '</div>';
 				$content = self::iconv($content);
-				
+
 				// js
 				if (!self::$_js_included)
 				{
@@ -1115,24 +1116,24 @@ class D
 							});';
 					$js .= '</script>';
 					$js .= '<style type="text/css">.hide{display:none;}</style>';
-					
+
 					$content = $js . $content;
 					self::$_js_included = true;
 				}
-				
+
 				echo $content;
-				
+
 				self::$_arg_pos++;
 			}
 			self::$_arg_pos = 0;
-			
+
 			if ($terminate)
 			{
 				exit;
 			}
 		}
 	}
-	
+
 	/**
 	 * 内部调用方法，直接打印参数并输出.
 	 * @param array $args 要打印的参数列表数组.
@@ -1144,7 +1145,7 @@ class D
 		if (!self::$_closed)
 		{
 			self::initArgs($args);
-				
+
 			self::$_arg_pos = 0;
 			foreach ($args as $arg)
 			{
@@ -1156,7 +1157,7 @@ class D
 				self::$_arg_pos++;
 			}
 			self::$_arg_pos = 0;
-			
+
 			if ($terminate)
 			{
 				exit;
@@ -1178,7 +1179,7 @@ class D
         }
         return $res;
     }
-	
+
 	/**
 	 * 内部调用方法，打印参数并将结果记录到文件中.
 	 * @param array $args 要打印的参数列表数组.
@@ -1193,7 +1194,7 @@ class D
 			if (DUMPER_LOG_ACTIVE)
 			{
 				self::initArgs($args);
-				
+
 				self::$_arg_pos = 0;
 				foreach ($args as $arg)
                 {
@@ -1214,7 +1215,7 @@ class D
 				}
 				self::$_arg_pos = 0;
 			}
-			
+
 			if ($terminate)
 			{
 				exit;
@@ -1278,7 +1279,7 @@ class D
             throw new Exception('Please make sure that the log path is an existent, readable and writerable directory.');
         }
     }
-	
+
 	/**
 	 * 内部调用方法，打印参数.
 	 * @param array $arg 要打印的参数.
@@ -1297,7 +1298,7 @@ class D
 			return CVarDumper::dumpAsString($arg) . "\n";
 		}
 		else
-		{		
+		{
 			/*
 			// 清掉之前开启的缓存,避免后续捕捉到
 			if ($level = ob_get_level())
@@ -1308,7 +1309,7 @@ class D
 				}
 			}
 			*/
-			
+
 			// 开启缓存,打印,并捕捉打印内容
 			ob_start();
 			var_dump($arg);
@@ -1334,12 +1335,12 @@ class D
         //$content=preg_replace('/\[\"/','[',$content);
         //$content=preg_replace('/\"\]/',']',$content);
     }
-	
+
 	/**
 	 * 内部调用方法，在打印结果的数组序号部分填充0保持对齐.
 	 * @param array $matches 调用PHP函数 {@link preg_replace_callback} 的匹配结果.
 	 * @return string 返回填充后文本.只处理序号位数在3以内的.
-	 * 
+	 *
 	 * @todo 如果能够根据数组元素的大小来决定填充0的个数就更好
 	 * 但是，因为是字符正则匹配替换，所以可能实现起来有困难。
 	 * 前补0换作前补空格或者其它字符会不会更好？
@@ -1352,7 +1353,7 @@ class D
 		$prefix = str_repeat('0', $repeats);
 		return preg_replace('/\d+/', $prefix . $num, $text);
 	}
-	
+
 	private static function namesMap($funcName)
 	{
 		$map = array(
@@ -1377,10 +1378,10 @@ class D
 			'globalse'=>'$GLOBALS',
 			'usage'=>'usage',
 		);
-		
+
 		return isset($map[$funcName]) ? $map[$funcName] : '';
 	}
-	
+
 	/**
 	 * 内部调用方法，在打印结果文本前面附加被打印参数名称.
 	 * @param string $content 打印的结果文本.
@@ -1502,7 +1503,7 @@ class D
         }
         return str_replace('{line}', $fileinfo['line'], $position);
     }
-	
+
 	/**
 	 * 内部调用方法，根据调用堆栈文件和行号获取调用参数名.
 	 * @param string $file 调用堆栈文件路径.
@@ -1533,15 +1534,15 @@ class D
 			}
 			$text = $line . $text;
 			$text = substr($text, strpos($text, 'D::'));
-			
+
 			// 遍历查找参数
 			$args = array();
-			
+
 			// 去除所有空白字符，方便后面字符定位
 			$text = preg_replace('/\s*/', '', $text);
 			preg_match('/\((.*)\)/', $text, $matches);
 			$s = $matches[1];
-			
+
 			while ($s != '')
 			{
 				if (($start = strpos($s, ',')) !== false)
@@ -1552,7 +1553,7 @@ class D
 						// 连续闭合括号取最后那个
 						$end++;
 					}
-					
+
 					$middle = strpos(substr($s, $start, $end), '(');
 					if ($end !== false && $middle === false)
 					{
@@ -1566,7 +1567,7 @@ class D
 						$args[] = substr($s, 0, $start);
 						$s = substr($s, $start + 1);
 					}
-					
+
 					$s = ltrim($s, ',');
 				}
 				else
@@ -1576,13 +1577,13 @@ class D
 					$s = '';
 				}
 			}
-			
+
 			self::$_args = $args;
 		}
-		
+
 		return array_shift(self::$_args);
 	}
-	
+
 	/**
 	 * 内部调用方法，字符集转换.
 	 * @param string $content 要转换的文本.
@@ -1600,7 +1601,7 @@ class D
 		}
 		return $content;
 	}
-	
+
 	public static function bk()
 	{
 		if (!self::$_closed)
@@ -1614,7 +1615,7 @@ class D
             }
 		}
 	}
-	
+
 	public static function fp()
 	{
 		if (!self::$_closed)
@@ -1643,7 +1644,7 @@ class D
             echo str_repeat($str, $num);
 		}
     }
-	
+
 	public static function rp($file)
 	{
 		self::pd(array(
@@ -1668,7 +1669,7 @@ class D
         $content = self::iconv($content);
         self::e($content);
     }
-	
+
 	public static function date($timestamp=null)
 	{
 		if ($timestamp === null)
@@ -1751,7 +1752,7 @@ class D
         $percent = number_format($percent, 2) . '%';
         self::log(array('diff'=>$diff, 'percent'=>$percent));
     }
-	
+
 	public static function count($items, $highlight=true, $log=false)
 	{
 	    $count = count($items);
@@ -1762,12 +1763,12 @@ class D
 		self::count($items, $highlight, $log);
 		exit();
 	}
-	
+
 	public static function rand($slight=false)
 	{
 		$slight ? self::pds(rand()) : self::pd(rand());
 	}
-	
+
 	public static function rande($slight=false)
 	{
 		$slight ? self::pdse(rand()) : self::pde(rand());
@@ -1785,12 +1786,12 @@ class D
 	public static function args($log=false)
 	{
 		$d = debug_backtrace(!DEBUG_BACKTRACE_PROVIDE_OBJECT);
-		
+
 		// 取第二项
 		if (isset($d[1]))
 		{
 			$caller = $d[1];
-			
+
 			// 函数或方法的结构定义
 			if (!isset($caller['class']))
 			{
@@ -1801,7 +1802,7 @@ class D
 				$object = new ReflectionMethod($caller['class'], $caller['function']);
 			}
 			$res = $caller['args'];
-			
+
 			// 参数名列表
 //            $res = [];
 //			foreach ($object->getParameters() as $index => $param)
@@ -1815,28 +1816,28 @@ class D
 		}
 		$log ? self::log($res) : self::pd($res);
 	}
-	
+
 	public static function post($slight=false){$slight ? self::pds($_POST) : self::pd($_POST);}
 	public static function poste($slight=false){$slight ? self::pdse($_POST) : self::pde($_POST);}
-	
+
 	public static function get($slight=false){$slight ? self::pds($_GET) : self::pd($_GET);}
 	public static function gete($slight=false){$slight ? self::pdse($_GET) : self::pde($_GET);}
-	
+
 	public static function request($slight=false){$slight ? self::pds($_REQUEST) : self::pd($_REQUEST);}
 	public static function requeste($slight=false){$slight ? self::pdse($_REQUEST) : self::pde($_REQUEST);}
-	
+
 	public static function session($slight=false){$slight ? self::pds($_SESSION) : self::pd($_SESSION);}
 	public static function sessione($slight=false){$slight ? self::pdse($_SESSION) : self::pde($_SESSION);}
-	
+
 	public static function cookie($slight=false){$slight ? self::pds($_COOKIE) : self::pd($_COOKIE);}
 	public static function cookiee($slight=false){$slight ? self::pdse($_COOKIE) : self::pde($_COOKIE);}
-	
+
 	public static function files($slight=false){$slight ? self::pds($_FILES) : self::pd($_FILES);}
 	public static function filese($slight=false){$slight ? self::pdse($_FILES) : self::pde($_FILES);}
-	
+
 	public static function server($slight=false){$slight ? self::pds($_SERVER) : self::pd($_SERVER);}
 	public static function servere($slight=false){$slight ? self::pdse($_SERVER) : self::pde($_SERVER);}
-	
+
 	public static function globals($slight=false){$slight ? self::pds($GLOBALS) : self::pd($GLOBALS);}
 	public static function globalse($slight=false){$slight ? self::pdse($GLOBALS) : self::pde($GLOBALS);}
 
@@ -1892,7 +1893,7 @@ class D
         self::usage($log);
         exit;
     }
-	
+
 	/**
 	 * 转换秒数成年月日数据.
 	 * @param int 秒数.
@@ -1914,7 +1915,7 @@ class D
 			'minutes'=>0,
 			'seconds'=>0
 		);
-		
+
 		$seconds = (int)$seconds;
 		if($seconds >= 31556926)
 		{
@@ -2034,7 +2035,7 @@ class D
 
         return $return_string ? implode($res) : $res;
     }
-	
+
 	public static function handleError($error, $message, $file, $line)
 	{
 		restore_error_handler();
@@ -2105,7 +2106,7 @@ class D
             }
         }
 	}
-	
+
 	public static function handleException($exception)
 	{
 		//restore_error_handler();
@@ -2154,13 +2155,13 @@ class D
 			exit(1);
         }
 	}
-	
+
 	// 丢弃输出，该功能未实现
 	private static function discardOutput()
 	{
 		ob_clean();
 	}
-	
+
 	/**
 	 * Reflect a function.
 	 * @param string $function 函数名.
@@ -2170,7 +2171,7 @@ class D
 	public static function refF($function, $highlight=true, $log=false)
 	{
 		$object = new ReflectionFunction($function);
-		
+
 		$name = $function . '()';
 		$data = array(
 			'Name'=>$name,
@@ -2181,7 +2182,7 @@ class D
 		$log ? self::log($data) : ($highlight ? self::pd($data) : self::pds($data));
 		self::$_message = '';
 	}
-	
+
 	/**
 	 * 同 {@link refF}，但会终止程序.
 	 */
@@ -2189,7 +2190,7 @@ class D
 	{
 		exit(self::refF($function, $highlight, $log));
 	}
-	
+
 	/**
 	 * Reflect a class or object.
 	 * @param mixed $class 类名或者对象.
@@ -2201,7 +2202,7 @@ class D
 		$data = self::refExplodeInternal($class);
 		$log ? self::log($data) : ($highlight ? self::pd($data) : self::pds($data));
 	}
-	
+
 	/**
 	 * 同 {@link ref}，但会终止程序.
 	 */
@@ -2226,7 +2227,7 @@ class D
 		}
 		return self::refExplode($object);
     }
-	
+
 	// explode reflection object
 	private static function refExplode($object)
 	{
@@ -2237,13 +2238,13 @@ class D
 			'properties' => self::refExplodeProperties($object),
 			'methods' => self::refExplodeMethods($object),
 		);
-		
+
 		if (($parent=$object->getParentClass()) instanceof ReflectionClass)
 			$ref['parentClass'] = self::refExplode($parent);
-		
+
 		return $ref;
 	}
-	
+
 	// explode reflection properties
 	private static function refExplodeProperties($object)
 	{
@@ -2261,7 +2262,7 @@ class D
 			sort($properties['protected properties']);
 		return $properties;
 	}
-	
+
 	// explode reflection methods
 	private static function refExplodeMethods($object)
 	{
@@ -2284,7 +2285,7 @@ class D
     {
         self::pd(strlen($string));
     }
-    
+
     public static function json($data, $header=false)
     {
         if ($header){
@@ -2746,7 +2747,7 @@ class D
         }
         $content .= QueryLog::formatStat($stat); // stat info
         $content .= QueryLog::formatDataToDisplay($data); // sql list
-        
+
         self::log($content);
     }
 
