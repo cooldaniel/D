@@ -1594,7 +1594,7 @@ class D
 	 * @param string $content 要转换的文本.
 	 * @return string 返回转换后的文本.
 	 */
-	private static function iconv($content)
+	public static function iconv($content)
 	{
 		if (self::$_iconv === self::UTF8)
 		{
