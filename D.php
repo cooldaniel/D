@@ -1621,6 +1621,20 @@ class D
 		}
 	}
 
+	public static function bks()
+    {
+        if (!self::$_closed)
+        {
+            if (func_num_args()){
+                self::pdse(func_get_args());
+            }else{
+                $position = self::getPositionFromDebugBacktrace();
+                echo "<pre> {$position}# !!! breakpoint !!! </pre>\n";
+                exit();
+            }
+        }
+    }
+
 	public static function fp()
 	{
 		if (!self::$_closed)
